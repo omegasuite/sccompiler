@@ -115,10 +115,10 @@ SDECS: ID { $$ = create_node(yylineno,_SDECS, "sdecs", 1, create_node(yylineno,_
 ;
 
 VARINIT: VAR { $$ = create_node(yylineno,_DEC, "dec", 1, $1); }
-| VAR '=' INIT { $$ = create_node(yylineno,_DEC, "assign dec", 3, $1,create_node(yylineno,_OPERATOR, $2, 0),$3); }
+| VAR '=' INIT { $$ = create_node(yylineno,_DEC, "assign dec", 3, create_node(yylineno,_ID, $1, 0), create_node(yylineno,_OPERATOR, $2, 0),$3); }
 ;
 
-VAR:ID { $$ = create_node(yylineno,_VAR, "var", 1,create_node(yylineno,_ID, $1, 0)); }
+VAR:ID { $$ = create_node(yylineno,_VAR, "var", 1, create_node(yylineno,_ID, $1, 0)); }
 | ID ARRS { $$ = create_node(yylineno,_VAR, "var []", 2, $1, $2); }
 ;
 
@@ -129,7 +129,7 @@ EXP: EXPS { $$ = $1); }
 primary_expression
 	: ID { $$ = create_node(yylineno,_ID, $1, 0); }
 	| INT { $$ = create_node(yylineno,_INT, $1, 0); }
-	| STRING { $$ = create_node(yylineno,_STRING, $1, 0); }
+	| STRING { $$ = create_node(yylineno,_ARRS, "arrs []", $1, 0); }
 	| '(' EXPS ')' { $$ = create_node(yylineno,_EXPS, "exps ()", 1, $2); }
 	;
 
@@ -166,7 +166,7 @@ unary_operator
 
 cast_expression
 	: unary_expression {$$=$1;}
-	| '(' type_name ')' cast_expression { $$ = create_node(yylineno,_EXPS, "cast exp", 2, $2, $4); }
+	| '(' TYPE ')' cast_expression { $$ = create_node(yylineno,_EXPS, "cast exp", 2, create_node(yylineno,_TYPE, $2, 0), $4); }
 	;
 
 power_expression
