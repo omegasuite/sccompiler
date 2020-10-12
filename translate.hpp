@@ -668,7 +668,7 @@ void phase3_translate() {
                     cout << "i" << ((i<<3) + 12) << ",";
                 }
                 cout << "\nRETURN\nSTOP\n";
-            } else fallthroughnode = q;
+            } else fallthroughnode = p;
         }
     }
 
@@ -912,59 +912,57 @@ int translate_stmt(TreeNode * pfunc, TreeNode *p) {
         if (p->children[1]->type == _INIT) {
             TreeNode * q = p->children[0];
             if (q->address == NULL)
-                q = matchID(p->data);
+                q = matchID(q->data);
             if (q == NULL)
                 report_err("Var undefined： ", p->data, p->line_num);
 
-            string assignee = "0,@";
-            assignee += string(q->address) + ",";
+            string assignee = string(q->address);
 
             translate_init(getType(p->children[0]), p->children[1], assignee, 0, &reg, &exp);
+            funcode += exp.invpoland;
+        } else if (isstruct(getType(p->children[0]))) {
+            string cpdest = "";
+            p->children[0]->leftval = true;
 
-            if (isstruct(getType(p->children[0]))) {
-                string cpdest = "";
-                p->children[0]->leftval = true;
-
-                if (p->children[0]->type == _ID) {
-                    translate_exps(p->children[0], &reg, &exp);
-                    cpdest = exp.invpoland;
-                } else {
-                    int t = reg;
-                    reg += 8;
-
-                    exp.invpoland = string("EVAL64 ii0'") + to_string(t) + ",";
-                    exp.invpoland += translate_addr_exps(p->children[0], &reg, &exp);
-                    funcode += exp.invpoland + "\n";
-                    cpdest = "iii0'" + to_string(t) + ",";
-                }
-
-                string cpsrc = "";
-                exp.invpoland = "";
-                p->children[1]->leftval = true;
-
-                if (p->children[1]->type == _ID) {
-                    exp.invpoland += translate_addr_exps(p->children[1], &reg, &exp);
-                    cpsrc = exp.invpoland;
-                } else {
-                    int t = reg;
-                    reg += 8;
-
-                    exp.invpoland = string("EVAL64 ii0'") + to_string(t) + ",";
-                    exp.invpoland += translate_addr_exps(p->children[1], &reg, &exp);
-                    funcode += exp.invpoland + "\n";
-                    cpsrc = "iii0'" + to_string(t) + ",";
-                }
-
-                funcode += string("COPY ") + cpdest + cpsrc + to_string(getsize(p->children[0])) + ",\n";
+            if (p->children[0]->type == _ID) {
+                translate_exps(p->children[0], &reg, &exp);
+                cpdest = exp.invpoland;
             } else {
-                exptype(p->children[0], &exp);
-                exptype(p->children[1], &exp);
+                int t = reg;
+                reg += 8;
 
-                p->children[0]->leftval = true;
-                translate_exps(p->children[0], & reg, &exp);
-                translate_exps(p->children[1], & reg, &exp);
-                funcode += string("EVAL") + to_string(exp.type) + " " + exp.invpoland + "\n";
+                exp.invpoland = string("EVAL64 ii0'") + to_string(t) + ",";
+                exp.invpoland += translate_addr_exps(p->children[0], &reg, &exp);
+                funcode += exp.invpoland + "\n";
+                cpdest = "iii0'" + to_string(t) + ",";
             }
+
+            string cpsrc = "";
+            exp.invpoland = "";
+            p->children[1]->leftval = true;
+
+            if (p->children[1]->type == _ID) {
+                exp.invpoland += translate_addr_exps(p->children[1], &reg, &exp);
+                cpsrc = exp.invpoland;
+            } else {
+                int t = reg;
+                reg += 8;
+
+                exp.invpoland = string("EVAL64 ii0'") + to_string(t) + ",";
+                exp.invpoland += translate_addr_exps(p->children[1], &reg, &exp);
+                funcode += exp.invpoland + "\n";
+                cpsrc = "iii0'" + to_string(t) + ",";
+            }
+
+            funcode += string("COPY ") + cpdest + cpsrc + to_string(getsize(p->children[0])) + ",\n";
+        } else {
+            exptype(p->children[0], &exp);
+            exptype(p->children[1], &exp);
+
+            p->children[0]->leftval = true;
+            translate_exps(p->children[0], &reg, &exp);
+            translate_exps(p->children[1], &reg, &exp);
+            funcode += string("EVAL") + to_string(exp.type) + " " + exp.invpoland + "\n";
         }
     } else if (in_array(p->data, assignops)) {
         exptype(p->children[0], &exp);
@@ -1004,7 +1002,7 @@ void exptype(TreeNode *p, expression *res);
 
 bool issimple(TreeNode * p){
     if (p->type == _INT || p->type == _STRING || p->type == _NIL) return true;
-    if (p->type != _ID) return false;
+    if (p->type != _ID && p->type != _TYPE) return false;
 
     p = getType(p);
 
@@ -1020,7 +1018,9 @@ map<const char *, const char *, ptr_cmp> typeLetter = {
         {"long", "Q"}, {"ulong", "Q"}, {"big", "H"},
 };
 
-void translate_init(TreeNode *p, TreeNode *q, string assignee, int offset, int * reg, expression *res) {
+void translate_init(TreeNode *r, TreeNode *q, string assignee, int offset, int * reg, expression *res) {
+    TreeNode * p = r;
+    if (p->type == _ID) p = p->children[0];
     if (!strcmp(p->data, "[]")) {
         int n = 1;
         string sz = "";
@@ -1045,15 +1045,19 @@ void translate_init(TreeNode *p, TreeNode *q, string assignee, int offset, int *
         }
     } else if (!strcmp(p->data, "pointer of")) {
         res->type = 0;
-        res->invpoland += string("EVAL64 ") + assignee + "," + to_string(offset) + ",++";
+        res->invpoland += string("EVAL64 ") + assignee + "\"" + to_string(offset) + ",";
         exptype(p, res);
         translate_exps(q, reg, res);
     } else if (issimple(p)) {
         res->type = 0;
         exptype(p, res);
-        res->invpoland += string("EVAL") + to_string(res->type) + " " + assignee + "," + to_string(offset) + ",++";
+
+        res->invpoland += string("EVAL") + to_string(res->type) + " "
+                + assignee + "\"" + to_string(offset) + ",";
+
         exptype(q, res);
         translate_exps(q, reg, res);
+        res->invpoland += "\n";
     } else report_err("Unknown type: ", p->data, p->line_num);
 }
 

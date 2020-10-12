@@ -540,7 +540,7 @@ void semantics_check_init(TreeNode* p) {
 	int i;
 	nodeType(p, _INIT);
 	for (i = 0; i < p->size; ++i) {
-	    if (p->children[i]->type != _EXPS) {
+	    if (p->children[i]->type == _INIT) {
 	        semantics_check_init(p->children[i]);
         } else {
             semantics_check_exps(p->children[i]);

@@ -151,7 +151,7 @@ INIT
 	;
 
 INITLIST
-	: unary_expression { $$ = create_node(yylineno,_INIT, "init list", 1, create_node(yylineno,_INIT, "init exp", 1, $1)); }
+	: unary_expression { $$ = create_node(yylineno,_INIT, "init list", 1, $1); }
 	| '{' INITLIST '}' { $$ = create_node(yylineno,_INIT, "init list", 1, $2); }
 	| INITLIST ',' unary_expression {$$ = merge_node($1, $3);}
 	| INITLIST ',' '{' INITLIST '}' {$$ = merge_node($1, $4);}
