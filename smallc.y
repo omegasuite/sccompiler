@@ -1,12 +1,14 @@
 %{
 #include "header.h"
-#include "lex.yy.c"
+#include "lex.yy.cpp"
 #include "def.h"
 #include "ast.h"
 #include "semantics.h"
-#include "translate.h"
-#include "interprete.h"
-#include "optimize.h"
+#include "translate.hpp"
+#include <cstring>
+
+// #define YYDEBUG 1
+
 using namespace std;
 void yyerror(char*);
 extern int yylineno;
@@ -17,161 +19,234 @@ extern int yylineno;
     char* string;
 }
 
-%token <string> INT ID STRING
-%token <string> TYPE STRUCT RETURN
-%token <string> IF ELSE BREAK CONT WHILE
+%token <string> INT ID STRING NIL
+%token <string> TYPE STRUCT UNION RETURN PUBLIC
+%token <string> IF ELSE BREAK CONT WHILE IMPORT FOR
 %token <string> ADD_ASSIGN SUB_ASSIGN MUL_ASSIGN DIV_ASSIGN AND_ASSIGN MOD_ASSIGN
 %token <string> XOR_ASSIGN OR_ASSIGN RIGHT_OP LEFT_OP SIZEOF
-%token <string> AND_OP OR_OP EQ_OP NE_OP RIGHT_ASSIGN LEFT_ASSIGN
-%token <string> PTR_OP
-%type <node> PROGRAM EXTDEFS EXTDEF SEXTVARS EXTVARS STSPEC FUNC PARAS STMTBLOCK STMTS
-%type <node> STMT DEFS SDEFS SDEF SDECS DECS VAR INIT EXP EXPS ARRS ARGS UNARYOP
+%token <string> AND_OP OR_OP EQ_OP NE_OP RIGHT_ASSIGN LEFT_ASSIGN POW_ASSIGN
+%token <string> ASM LIBMARK
+%type <node> EXTDEFS EXTDEF STSPEC FUNC PARAS STMTBLOCK STMTS XTYPE
+%type <node> STMT DEFS SDEFS SDEF EXP EXPS ARRS ARGS EXTVARS NMSTSPEC INIT INITLIST
+%type <node> primary_expression postfix_expression unary_expression unary_operator const
+%type <node> cast_expression power_expression multiplicative_expression additive_expression shift_expression
+%type <node> relational_expression equality_expression and_expression exclusive_or_expression inclusive_or_expression
+%type <node> logical_and_expression logical_or_expression assignment_operator left_exp func_expression
 
 %nonassoc  IFX
 %nonassoc ELSE
-%right '=' ADD_ASSIGN SUB_ASSIGN MUL_ASSIGN DIV_ASSIGN AND_ASSIGN MOD_ASSIGN XOR_ASSIGN OR_ASSIGN LEFT_ASSIGN RIGHT_ASSIGN
-%left  OR_OP
-%left  AND_OP
+%right '='
+%right ADD_ASSIGN SUB_ASSIGN MUL_ASSIGN DIV_ASSIGN AND_ASSIGN MOD_ASSIGN XOR_ASSIGN OR_ASSIGN LEFT_ASSIGN RIGHT_ASSIGN
+%left '?' ':'
+%left OR_OP
+%left AND_OP
+%left EQ_OP NE_OP
+%left <string> GE_OP LE_OP '>' '<'
 %left <string> '|'
 %left <string> '^'
 %left <string> '&'
-%left  EQ_OP NE_OP
-%left <string> GE_OP LE_OP '>' '<'
 %left LEFT_OP RIGHT_OP
 %left <string> '+' '-'
-%left <string> '*' '/' '%' '#' ':'
-%right <string> INC_OP DEC_OP UNARY '?'
-%left  '.' '(' '['
+%left <string> '*' '/' '%'
+%left '#'
+%right <string> UNARY
+%left  <string> '.' '[' PTR_OP
+%left '('
 %start EXTDEFS
 %%
 
-EXTDEFS: EXTDEF { treeroot = $$ = create_node(yylineno,_PROGRAM,"program",1,$1); }
-| EXTDEFS EXTDEF { $$ = merge_node($1,$2); }
-;
+EXTDEFS
+	: EXTDEF { treeroot = $$ = create_node(yylineno,_EXTDEFS,"program",1,$1); }
+	| EXTDEFS EXTDEF { $$ = merge_node($1,$2); }
+	;
 
-EXTDEF: XTYPE EXTVARS ';' { $$ = create_node(yylineno,_EXTDEF, "extdef", 2, $1, $2); }
-| FUNC STMTBLOCK { $$ = create_node(yylineno,_EXTDEF, "extdef func", 3, create_node(yylineno,_TYPE, "func ()", 1, $1),$1,$2); }
-;
+EXTDEF
+	: XTYPE EXTVARS ';' { $$ = create_node(yylineno, _EXTDEF, "extdef", 1, reorg_var_dec_node($1, $2)); }
+	| STSPEC ';' { $$ = $1; }
+	| IMPORT ID ';' { $$ = create_node(yylineno,_EXTDEF, "import", 1, create_node(yylineno,_ID, $2, 0)); }
+	| FUNC STMTBLOCK {
+		TreeNode * t = $1->children[0];
+		if ($1->size == 2) $1->children[0] = $1->children[1];
+		$1->size--;
+		$$ = create_node(yylineno, _EXTDEF, "extdef func", 3, t, $1, $2);
+	}
+	;
 
-XTYPE: TYPE {$$ = create_node(yylineno,_TYPE, $1, 0);}
-| STSPEC {$$ = $1;}
-| STRUCT ID {$$ = create_node(yylineno,_TYPE, $2, 0);}
-| XTYPE * {$$ = create_node(yylineno,_TYPE, "pointer of", 1, $1);}
-;
+XTYPE
+	: TYPE {$$ = create_node(yylineno,_TYPE, $1, 0);}
+	| XTYPE '*' {$$ = create_node(yylineno,_TYPE, "pointer of", 1, $1);}
+	| XTYPE ARRS {$$ = create_node(yylineno,_TYPE, "[]", 2, $1, $2);}
+	| STRUCT ID { $$ = create_node(yylineno,_TYPE, "stspec identifier {}", 2, create_node(yylineno,_OPERATOR,$1,0), create_node(yylineno,_ID, $2, 0)); }
+	| UNION ID { $$ = create_node(yylineno,_TYPE, "stspec identifier {}", 2, create_node(yylineno,_OPERATOR,$1,0), create_node(yylineno,_ID, $2, 0)); }
+	;
 
-STSPEC: STRUCT ID '{' SDEFS '}' { $$ = create_node(yylineno,_TYPE, "stspec identifier {}", 3, create_node(yylineno,_OPERATOR,$1,0), create_node(yylineno,_ID, $2, 0),$4); }
-| STRUCT '{' SDEFS '}' { $$ = create_node(yylineno,_TYPE, "stspec {}", 2, create_node(yylineno,_OPERATOR,$1,0),$3); }
-;
+STSPEC
+	: STRUCT ID '{' SDEFS '}' { $$ = create_node(yylineno,_TYPE, "stspec identifier {}", 3, create_node(yylineno,_OPERATOR,$1,0), create_node(yylineno,_ID, $2, 0),$4); }
+	| UNION ID '{' SDEFS '}' { $$ = create_node(yylineno,_TYPE, "stspec identifier {}", 3, create_node(yylineno,_OPERATOR,$1,0), create_node(yylineno,_ID, $2, 0), $4); }
+	;
 
-SDEFS: XTYPE SDECS { $$ = create_node(yylineno,_SDEFS, "sdefs", 2, create_node(yylineno,_SDEF, "sdef", 2, $1,$2); }
-| SDEFS ';' XTYPE SDECS  { $$ = merge_node($1, create_node(yylineno,_SDEF, "sdef", 2,$3,$4); }
-;
+NMSTSPEC
+	: STRUCT '{' SDEFS '}' { $$ = create_node(yylineno,_TYPE, "stspec {}", 2, create_node(yylineno,_OPERATOR,$1,0), $3); }
+	| UNION '{' SDEFS '}' { $$ = create_node(yylineno,_TYPE, "stspec {}", 2, create_node(yylineno,_OPERATOR,$1,0), $3); }
+	;
 
-EXTVARS: VARINIT { $$ = create_node(yylineno,_EXTVARS, "extvars", 1, $1); }
-| EXTVARS ',' VARINIT { $$ = merge_node($1, $3); }
-;
+SDEFS
+	: SDEF ';' { $$ = create_node(yylineno,_SDEFS, "sdefs", 1, $1); }
+	| SDEFS SDEF ';' { $$ = merge_node($1, $2); }
+	;
 
-INIT: EXPS { $$ = create_node(yylineno,_INIT, "init", 1, $1); }
-| '{' ARGS '}' { $$ = create_node(yylineno,_INIT, "init {}", 1, $2); }
-;
+SDEF
+	: XTYPE EXTVARS { $$ = reorg_var_dec_node($1,$2); }
+	| NMSTSPEC EXTVARS { $$ = reorg_var_dec_node($1,$2); }
+	;
 
-FUNC: XTYPE ID '(' PARAS ')' { $$ = create_node(yylineno,_FUNC, "func ()", 3, $1, create_node(yylineno,_ID, $2, 0), $4); }
-| XTYPE ID '(' ')' { $$ = create_node(yylineno,_FUNC, "func ()", 2, $1, create_node(yylineno,_ID, $2, 0)); }
-| PUBLIC XTYPE ID '(' PARAS ')' { $$ = create_node(yylineno,_FUNC, "pub func ()", 3, $1, create_node(yylineno,_ID, $2, 0), $4); }
-| PUBLIC XTYPE ID '(' ')' { $$ = create_node(yylineno,_FUNC, "pub func ()", 2, $1, create_node(yylineno,_ID, $2, 0)); }
-;
+EXTVARS
+	: ID { $$ = create_node(yylineno,_EXTVARS, "var list", 1, create_node(yylineno,_ID, $1, 0)); }
+	| EXTVARS ',' ID { $$ = merge_node($1, create_node(yylineno,_ID, $3, 0)); }
+	;
 
-PARAS: XTYPE VAR { $$ = create_node(yylineno,_PARAS, "paras", 1,create_node(yylineno,_PARA, 'para', 2, $1, $2)); }
-| PARAS ',' XTYPE VAR { $$ = merge_node($1, create_node(yylineno,_PARA, 'para', 2, $3, $4)); }
-;
+FUNC
+	: XTYPE ID '(' PARAS ')' { $$ = create_node(yylineno,_FUNC, "func ()", 2, create_node(yylineno,_ID, $2, 1, $1), $4); }
+	| XTYPE ID '(' ')' { $$ = create_node(yylineno,_FUNC, "func ()", 1, create_node(yylineno,_ID, $2, 1, $1)); }
+	| PUBLIC XTYPE ID '(' PARAS ')' { $$ = create_node(yylineno,_FUNC, "pub func ()", 2, create_node(yylineno,_ID, $3, 1, $2), $5); }
+	| PUBLIC XTYPE ID '(' ')' { $$ = create_node(yylineno,_FUNC, "pub func ()", 1, create_node(yylineno,_ID, $3, 1, $2)); }
+	;
 
-STMTBLOCK: '{' DEFS STMTS '}' { $$ = create_node(yylineno,_STMTBLOCK, "stmtblock {}", 2, $2,$3); }
-| '{' DEFS '}' { $$ = create_node(yylineno,_STMTBLOCK, "stmtblock {}", 1, $2); }
-| '{' STMTS '}' { $$ = create_node(yylineno,_STMTBLOCK, "stmtblock {}", 1, $2); }
-| '{' '}' { $$ = create_node(yylineno,_STMTBLOCK, "stmtblock {}", 0); }
-;
+PARAS
+	: XTYPE ID { $$ = create_node(yylineno,_PARAS, "paras", 1, create_node(yylineno,_ID, $2, 1, $1)); }
+	| PARAS ',' XTYPE ID { $$ = merge_node($1, create_node(yylineno,_ID, $4, 1, $3)); }
+	;
 
-STMTS: STMT { $$ = create_node(yylineno,_STMTS, "stmts", 1, $1); }
-| STMTS STMT {$$ = merge_node($1, $2);}
-;
+STMTBLOCK
+	: '{' DEFS STMTS '}' { $$ = create_node(yylineno,_STMTBLOCK, "stmtblock {}", 2, $2,$3); }
+	| '{' DEFS '}' { $$ = create_node(yylineno,_STMTBLOCK, "stmtblock {}", 1, $2); }
+	| '{' STMTS '}' { $$ = create_node(yylineno,_STMTBLOCK, "stmtblock {}", 1, $2); }
+	| '{' '}' { $$ = create_node(yylineno,_STMTBLOCK, "stmtblock {}", 0); }
+	;
 
-STMT: EXP ';' { $$ = create_node(yylineno,_STMT, "stmt: exp;", 1, $1); }
-| STMTBLOCK { $$ = $1; }
-| RETURN EXPS ';' { $$ = create_node(yylineno,_STMT, "return stmt", 2, create_node(yylineno,_KEYWORDS, $1, 0),$2); }
-| RETURN ';' { $$ = create_node(yylineno,_STMT, "return stmt", 1, create_node(yylineno,_KEYWORDS, $1, 0)); }
-| IF '(' EXPS ')' STMT %prec IFX { $$ = create_node(yylineno,_STMT, "if stmt", 2, $3,$5); }
-| IF '(' EXPS ')' STMT ELSE STMT %prec ELSE { $$ = create_node(yylineno,_STMT, "if stmt", 3, $3,$5,$7);}
-| FOR '(' EXPS ')' STMT { $$ = create_node(yylineno,_STMT, "for stmt", 2, $3,$5); }
-| CONT ';' { $$ = create_node(yylineno,_STMT, "cont stmt", 1, create_node(yylineno,_KEYWORDS, $1, 0)); }
-| BREAK ';' { $$ = create_node(yylineno,_STMT, "break stmt", 1, create_node(yylineno,_KEYWORDS, $1, 0)); }
-;
+STMTS
+	: STMT { $$ = create_node(yylineno,_STMTS, "stmts", 1, $1); }
+	| STMTS STMT {$$ = merge_node($1, $2);}
+	;
 
-DEFS: XTYPE EXTVARS ';' { $$ = create_node(yylineno,_DEFS, "defs", 1, create_node(yylineno,_DEF, "def", 2, $1, $2)); }
-| DEFS XTYPE EXTVARS ';' {$$ = merge_node($1, create_node(yylineno,_DEF, "def", 2, $2, $3));}
-;
+STMT
+	: ';' { $$ = NULL; }
+	| STMTBLOCK { $$ = $1; }
+	| RETURN EXPS ';' { $$ = create_node(yylineno,_STMT, "return stmt", 2, create_node(yylineno,_KEYWORDS, $1, 0),$2); }
+	| RETURN ';' { $$ = create_node(yylineno,_STMT, "return stmt", 1, create_node(yylineno,_KEYWORDS, $1, 0)); }
+	| IF '(' EXPS ')' STMT %prec IFX { $$ = create_node(yylineno,_STMT, "if stmt", 2, $3,$5); }
+	| IF '(' EXPS ')' STMT ELSE STMT %prec ELSE { $$ = create_node(yylineno,_STMT, "if stmt", 3, $3,$5,$7);}
+	| FOR '(' EXPS ')' STMT { $$ = create_node(yylineno,_STMT, "for stmt", 2, $3,$5); }
+	| CONT ';' { $$ = create_node(yylineno,_STMT, "cont stmt", 1, create_node(yylineno,_KEYWORDS, $1, 0)); }
+	| BREAK ';' { $$ = create_node(yylineno,_STMT, "break stmt", 1, create_node(yylineno,_KEYWORDS, $1, 0)); }
+	| left_exp '=' INIT ';' { $$ = create_node(yylineno,_STMT, "=", 2, $1,$3); }
+	| left_exp assignment_operator EXPS ';' { $$ = create_node(yylineno,_STMT, $2->data, 2, $1,$3); }
+	| ASM { $$ = create_node(yylineno,_STMT, "stmt: asm;", 1, create_node(yylineno,_KEYWORDS, $1, 0)); }
+	| EXPS ';' { $$ = create_node(yylineno,_STMT, "exps stmt", 1, $1); }
+	;
 
-SDECS: ID { $$ = create_node(yylineno,_SDECS, "sdecs", 1, create_node(yylineno,_ID, $1, 0)); }
-| SDECS ',' ID { $$ = merge_node($1, create_node(yylineno,_ID,$3,0)); }
-;
+INIT
+	: '{' INITLIST '}' { $$ = $2; }
+	| EXPS { $$ = $1; }
+	;
 
-VARINIT: VAR { $$ = create_node(yylineno,_DEC, "dec", 1, $1); }
-| VAR '=' INIT { $$ = create_node(yylineno,_DEC, "assign dec", 3, create_node(yylineno,_ID, $1, 0), create_node(yylineno,_OPERATOR, $2, 0),$3); }
-;
+INITLIST
+	: unary_expression { $$ = create_node(yylineno,_INIT, "init list", 1, create_node(yylineno,_INIT, "init exp", 1, $1)); }
+	| '{' INITLIST '}' { $$ = create_node(yylineno,_INIT, "init list", 1, $2); }
+	| INITLIST ',' unary_expression {$$ = merge_node($1, $3);}
+	| INITLIST ',' '{' INITLIST '}' {$$ = merge_node($1, $4);}
+	;
 
-VAR:ID { $$ = create_node(yylineno,_VAR, "var", 1, create_node(yylineno,_ID, $1, 0)); }
-| ID ARRS { $$ = create_node(yylineno,_VAR, "var []", 2, $1, $2); }
-;
+left_exp
+	: ID { $$ = create_node(yylineno,_ID, $1, 0); }
+	| left_exp ARRS { $$ = create_node(yylineno,_EXPS, "exps arr", 2, $1, $2); }
+	| left_exp '.' ID { $$ = create_node(yylineno,_EXPS, "exps struct", 2, $1, create_node(yylineno,_ID, $3, 0)); }
+	| left_exp PTR_OP ID { $$ = create_node(yylineno,_EXPS, "exps struct ptr", 2, $1, create_node(yylineno,_ID, $3, 0)); }
+	| '*' left_exp { $$ = create_node(yylineno,_EXPS, "deference", 1, $2); }
+	| '(' EXPS ')' ARRS { $$ = create_node(yylineno,_EXPS, "exps arr", 2, $2, $4); }
+	| '(' EXPS ')' '.' ID { $$ = create_node(yylineno,_EXPS, "exps struct", 2, $2, create_node(yylineno,_ID, $5, 0)); }
+	| '(' EXPS ')' PTR_OP ID { $$ = create_node(yylineno,_EXPS, "exps struct ptr", 2, $2, create_node(yylineno,_ID, $5, 0)); }
+	| '*' '(' EXPS ')' { $$ = create_node(yylineno,_EXPS, "deference", 1, $3); }
+	;
 
-EXP: EXPS { $$ = $1); }
-| {$$ = create_node(yylineno,_NULL, "null", 0);}
-;
+assignment_operator
+	: MUL_ASSIGN {$$ = create_node(yylineno,_OPERATOR, "*=", 0);}
+	| DIV_ASSIGN {$$ = create_node(yylineno,_OPERATOR, "/=", 0);}
+	| MOD_ASSIGN {$$ = create_node(yylineno,_OPERATOR, "%=", 0);}
+	| ADD_ASSIGN {$$ = create_node(yylineno,_OPERATOR, "+=", 0);}
+	| SUB_ASSIGN {$$ = create_node(yylineno,_OPERATOR, "-=", 0);}
+	| LEFT_ASSIGN {$$ = create_node(yylineno,_OPERATOR, "<<=", 0);}
+	| RIGHT_ASSIGN {$$ = create_node(yylineno,_OPERATOR, ">>=", 0);}
+	| AND_ASSIGN {$$ = create_node(yylineno,_OPERATOR, "&=", 0);}
+	| XOR_ASSIGN {$$ = create_node(yylineno,_OPERATOR, "^=", 0);}
+	| OR_ASSIGN {$$ = create_node(yylineno,_OPERATOR, "|=", 0);}
+	| POW_ASSIGN {$$ = create_node(yylineno,_OPERATOR, "#=", 0);}
+	;
+
+DEFS
+	: XTYPE EXTVARS ';' { $$ = create_node(yylineno,_DEFS, "defs", 1, create_node(yylineno,_EXTDEF, "extdef", 1, reorg_var_dec_node($1, $2))); }
+	| STSPEC ';' { $$ = create_node(yylineno,_DEFS, "defs", 1, $1); }
+	| DEFS STSPEC ';' { $$ = merge_node($1, $2); }
+	| DEFS XTYPE EXTVARS ';' {$$ = merge_node($1, create_node(yylineno,_EXTDEF, "extdef", 1, reorg_var_dec_node($2, $3)));}
+	;
+
+EXP
+	: EXPS { $$ = $1; }
+	| {$$ = create_node(yylineno,_NULL, "null", 0);}
+	;
 
 primary_expression
 	: ID { $$ = create_node(yylineno,_ID, $1, 0); }
-	| INT { $$ = create_node(yylineno,_INT, $1, 0); }
-	| STRING { $$ = create_node(yylineno,_ARRS, "arrs []", $1, 0); }
 	| '(' EXPS ')' { $$ = create_node(yylineno,_EXPS, "exps ()", 1, $2); }
 	;
 
 postfix_expression
 	: primary_expression {$$=$1;}
-	| postfix_expression ARRS { $$ = create_node(yylineno,_EXPS, "exps arr", 2, create_node(yylineno,_ID, $1, 0),$2); }
-	| ID '(' ARGS ')' { $$ = create_node(yylineno,_EXPS, "exps f()", 2, create_node(yylineno,_ID, $1, 0),$3); }
-	| ID '.' ID '(' ARGS ')' { $$ = create_node(yylineno,_EXPS, "lib call ()", 3, create_node(yylineno,_ID, $1, 0), create_node(yylineno,_ID, $3, 0),$5); }
-	| postfix_expression '.' ID { $$ = create_node(yylineno,_EXPS, "exps struct", 3, $1, create_node(yylineno,_OPERATOR, $2, 0),create_node(yylineno,_ID, $3, 0)); }
-	| postfix_expression PTR_OP ID { $$ = create_node(yylineno,_EXPS, "exps struct", 3, $1, create_node(yylineno,_OPERATOR, $2, 0),create_node(yylineno,_ID, $3, 0)); }
+	| postfix_expression ARRS { $$ = create_node(yylineno,_EXPS, "exps arr", 2, $1, $2); }
+	| postfix_expression '.' ID { $$ = create_node(yylineno,_EXPS, "exps struct", 2, $1, create_node(yylineno,_ID, $3, 0)); }
+	| postfix_expression PTR_OP ID { $$ = create_node(yylineno,_EXPS, "exps struct ptr", 2, $1, create_node(yylineno,_ID, $3, 0)); }
+	;
+
+const
+	: INT { $$ = create_node(yylineno,_INT, $1, 0); }
+	| NIL { $$ = create_node(yylineno,_NIL, "0", 0); }
+	| STRING { $$ = create_node(yylineno,_STRING, $1, 0); }
 	;
 
 unary_expression
 	: postfix_expression {$$=$1;}
-	| INC_OP unary_expression { $$ = create_node(yylineno,_EXPS, "exps unary", 2, create_node(yylineno,_UNARYOP, $1, 0),$2); }
-	| DEC_OP unary_expression { $$ = create_node(yylineno,_EXPS, "exps unary", 2, create_node(yylineno,_UNARYOP, $1, 0),$2); }
+	| const { $$ = $1; }
 	| unary_operator cast_expression { $$ = create_node(yylineno,_EXPS, "exps unary", 2, $1,$2); }
-	| SIZEOF '(' type_name ')' { $$ = create_node(yylineno,_EXPS, "sizeof", 1, $3); }
-	;
-
-type_name
-	: XTYPE {$$=$1;}
-	| XTYPE ARRS { $$ = create_node(yylineno,_TYPE, "typed array", 2, $1, $2); }
+	| SIZEOF '(' XTYPE ')' { $$ = create_node(yylineno,_EXPS, "sizeof", 1, $3); }
 	;
 
 unary_operator
-	: '&' {$$ = create_node(yylineno,_UNARYOP, $1, 0);}
-	| '*' {$$ = create_node(yylineno,_UNARYOP, $1, 0);}
-	| '+' {$$ = create_node(yylineno,_UNARYOP, $1, 0);}
-	| '-' {$$ = create_node(yylineno,_UNARYOP, $1, 0);}
-	| '~' {$$ = create_node(yylineno,_UNARYOP, $1, 0);}
-	| '!' {$$ = create_node(yylineno,_UNARYOP, $1, 0);}
+	: '&' {$$ = create_node(yylineno,_UNARYOP, "&", 0);}
+	| '*' {$$ = create_node(yylineno,_UNARYOP, "*", 0);}
+	| '+' {$$ = create_node(yylineno,_UNARYOP, "+", 0);}
+	| '-' {$$ = create_node(yylineno,_UNARYOP, "-", 0);}
+	| '~' {$$ = create_node(yylineno,_UNARYOP, "~", 0);}
+	| '!' {$$ = create_node(yylineno,_UNARYOP, "!", 0);}
 	;
 
-cast_expression
+func_expression
 	: unary_expression {$$=$1;}
+	| ID '(' ARGS ')' { $$ = create_node(yylineno,_EXPS, "exps f()", 2, create_node(yylineno,_ID, $1, 0),$3); }
+	| ID '(' ')' { $$ = create_node(yylineno,_EXPS, "exps f()", 1, create_node(yylineno,_ID, $1, 0)); }
+	| ID LIBMARK ID '(' ARGS ')' { $$ = create_node(yylineno,_EXPS, "lib call ()", 3, create_node(yylineno,_ID, $1, 0), create_node(yylineno,_ID, $3, 0),$5); }
+	| ID LIBMARK ID '(' ')' { $$ = create_node(yylineno,_EXPS, "lib call ()", 2, create_node(yylineno,_ID, $1, 0), create_node(yylineno,_ID, $3, 0)); }
+	| ID ':' ID '(' ARGS ')' { $$ = create_node(yylineno,_EXPS, "execute ()", 3, create_node(yylineno,_ID, $1, 0), create_node(yylineno,_ID, $3, 0),$5); }
+	| ID ':' ID '(' ')' { $$ = create_node(yylineno,_EXPS, "execute ()", 2, create_node(yylineno,_ID, $1, 0), create_node(yylineno,_ID, $3, 0)); }	;
+
+cast_expression
+	: func_expression {$$=$1;}
 	| '(' TYPE ')' cast_expression { $$ = create_node(yylineno,_EXPS, "cast exp", 2, create_node(yylineno,_TYPE, $2, 0), $4); }
+	| '(' XTYPE '*' ')' cast_expression { $$ = create_node(yylineno,_EXPS, "cast * exp", 2, create_node(yylineno,_TYPE, "pointer of", 1, $2), $5); }
 	;
 
 power_expression
 	: cast_expression {$$=$1;}
-	| power_expression '#' cast_expression { $$ = create_node(yylineno,_EXPS, $2, 2, $1,$3); }
+	| power_expression '#' cast_expression { $$ = create_node(yylineno,_EXPS, "#", 2, $1,$3); }
 	;
 
 multiplicative_expression
@@ -187,8 +262,23 @@ additive_expression
 	| additive_expression '-' multiplicative_expression { $$ = create_node(yylineno,_EXPS, $2, 2, $1,$3); }
 	;
 
-shift_expression
+and_expression
 	: additive_expression {$$=$1;}
+	| and_expression '&' equality_expression { $$ = create_node(yylineno,_EXPS, $2, 2, $1,$3); }
+	;
+
+exclusive_or_expression
+	: and_expression {$$=$1;}
+	| exclusive_or_expression '^' and_expression { $$ = create_node(yylineno,_EXPS, $2, 2, $1,$3); }
+	;
+
+inclusive_or_expression
+	: exclusive_or_expression {$$=$1;}
+	| inclusive_or_expression '|' exclusive_or_expression { $$ = create_node(yylineno,_EXPS, $2, 2, $1,$3); }
+	;
+
+shift_expression
+	: inclusive_or_expression {$$=$1;}
 	| shift_expression LEFT_OP additive_expression { $$ = create_node(yylineno,_EXPS, $2, 2, $1,$3); }
 	| shift_expression RIGHT_OP additive_expression { $$ = create_node(yylineno,_EXPS, $2, 2, $1,$3); }
 	;
@@ -207,23 +297,8 @@ equality_expression
 	| equality_expression NE_OP relational_expression { $$ = create_node(yylineno,_EXPS, $2, 2, $1,$3); }
 	;
 
-and_expression
-	: equality_expression {$$=$1;}
-	| and_expression '&' equality_expression { $$ = create_node(yylineno,_EXPS, $2, 2, $1,$3); }
-	;
-
-exclusive_or_expression
-	: and_expression {$$=$1;}
-	| exclusive_or_expression '^' and_expression { $$ = create_node(yylineno,_EXPS, $2, 2, $1,$3); }
-	;
-
-inclusive_or_expression
-	: exclusive_or_expression {$$=$1;}
-	| inclusive_or_expression '|' exclusive_or_expression { $$ = create_node(yylineno,_EXPS, $2, 2, $1,$3); }
-	;
-
 logical_and_expression
-	: inclusive_or_expression {$$=$1;}
+	: equality_expression {$$=$1;}
 	| logical_and_expression AND_OP inclusive_or_expression { $$ = create_node(yylineno,_EXPS, $2, 2, $1,$3); }
 	;
 
@@ -232,70 +307,142 @@ logical_or_expression
 	| logical_or_expression OR_OP logical_and_expression { $$ = create_node(yylineno,_EXPS, $2, 2, $1,$3); }
 	;
 
-conditional_expression
-	: logical_or_expression {$$=$1;}
-	| logical_or_expression '?' expression ':' conditional_expression { $$ = create_node(yylineno,_EXPS, $2, 3, $1,$3,$5); }
-	;
-
 EXPS
-	: conditional_expression {$$=$1;}
-	| unary_expression assignment_operator EXPS { $$ = create_node(yylineno,_EXPS, $2, 2, $1,$3); }
+	: logical_or_expression {$$=$1;}
+	| logical_or_expression '?' EXPS ':' EXPS { $$ = create_node(yylineno,_EXPS, "?", 3, $1,$3,$5); }
 	;
 
-assignment_operator
-	: '=' {$$=$1;}
-	| MUL_ASSIGN {$$=$1;}
-	| DIV_ASSIGN {$$=$1;}
-	| MOD_ASSIGN {$$=$1;}
-	| ADD_ASSIGN {$$=$1;}
-	| SUB_ASSIGN {$$=$1;}
-	| LEFT_ASSIGN {$$=$1;}
-	| RIGHT_ASSIGN {$$=$1;}
-	| AND_ASSIGN {$$=$1;}
-	| XOR_ASSIGN {$$=$1;}
-	| OR_ASSIGN {$$=$1;}
-	| POW_ASSIGN {$$=$1;}
+ARRS
+	: '[' EXP ']' { $$ = create_node(yylineno,_ARRS, "arrs []", 1, $2); }
+	| ARRS '[' EXPS ']' {$$ = merge_node($1, $3);}
 	;
 
-ARRS: '[' EXP ']' { $$ = create_node(yylineno,_ARRS, "arrs []", 1, $2); }
-| ARRS '[' EXPS ']' {$$ = merge_node($1, $3);}
-;
-
-ARGS: EXP { $$ = create_node(yylineno,_ARGS, "args", 1, $1); }
-| ARGS ',' EXPS { $$ = merge_node($1,$3); }
-| '{' ARGS '}' { $$ = create_node(yylineno,_ARGS, "args", 1, $2); }
-;
+ARGS
+	: EXPS { $$ = create_node(yylineno,_ARGS, "args", 1, $1); }
+	| ARGS ',' EXPS { $$ = merge_node($1,$3); }
+	;
 
 %%
+#include <unistd.h>
 #include <stdio.h>
+#include <fcntl.h>
+#include <sys/types.h>
+// #include <sys/time.h>
 #include "header.h"
 #include "semantics.h"
-#include "translate.h"
-void yyerror(char *s)
-{
-	fflush(stdout);
-	fprintf(stderr,"%d :%s %s\n",yylineno,s,yytext);
-}
-int main(int argc, char *argv[])
-{
-	freopen(argv[1], "r", stdin);
-    	freopen("MIPSCode.s", "w", stdout);
-	if(!yyparse()){
-		fprintf(stderr,"Parsing complete.\n");
-		//print_ast(treeroot,0);
-		semantics(treeroot);
-		fprintf(stderr,"Semantics check complete.\n");
-		phase3_translate();
-		fprintf(stderr,"Translate complete.\n");
-		optimize();
-		interpret();
+#include "translate.hpp"
+
+int yylineno;
+char scanned[4098];
+int clp = 0;
+
+void genabi(FILE * fp);
+
+void scanner(const char * s) {
+	char c;
+	while (c = *s++) {
+		if (c == '\n' || clp == 4096) {
+			clp = 0;
+		}
+		else scanned[clp++] = c;
 	}
-	else
-		printf("Parsing failed.\n");
+	scanned[clp] = '\0';
+//			fprintf(stderr,"%s\n",scanned);
+}
+
+void yyerror(const char *s) {
+	fflush(stdout);
+	fprintf(stderr,"%s\n%d :%s %s\n",scanned,yylineno,s,yytext);
+}
+
+int main(int argc, char *argv[]) {
+	pid_t pid = 0;
+	int pipefd[2];
+	char c_buf[10], buf[4096];
+	
+//	yydebug = 1;
+
+	pipefd[1] = creat("__tmp", 0777);
+	
+//	pipe(pipefd);
+//	pid = fork();
+
+//	if(pid < 0) {
+/*
+		if (argc < 2) {
+			cout << "Missing name of the file to be compiled";
+			exit(1);
+		}
+*/
+		FILE * fp;
+
+		for (int i = 1; i < argc; i++) {
+			fp = fopen(argv[i], "r");
+			if (!fp) {
+				cout << "Missing " << argv[1];
+				exit(1);
+			}
+
+			while (!feof(fp)) {
+				int n = fread(buf, 1, 1024, fp);
+				write(pipefd[1], buf, n);
+			}
+			fclose(fp);
+		}
+
+		fp = fopen("buildin.c", "r");
+		if (!fp) {
+			cout << "Missing buildin.c";
+			exit(1);
+		}
+
+		while (!feof(fp)) {
+			int n = fread(buf, 1, 1024, fp);
+			write(pipefd[1], buf, n);
+		}
+		fclose(fp);
+
+		close(pipefd[1]);
+//	}
+
+//	if(pid > 0) {
+		pipefd[0] = open("__tmp", O_RDONLY);
+		close(0);
+		dup(pipefd[0]);
+
+//		char compiled[255];
+//		sprintf(compiled, "%s.ovm", argv[1]);
+
+//		freopen(compiled, "w", stdout);
+		if(!yyparse()){
+			fprintf(stderr,"Parsing complete.\n");
+			progroot = treeroot;
+			treeroot = NULL;
+			
+			semantics(progroot);
+			fprintf(stderr,"Semantics check complete.\n");
+
+			flattern(progroot);
+			
+			print_ast(progroot, 0);
+
+			phase3_translate();
+			fprintf(stderr,"Translate complete.\n");
+
+			char compiled[255];
+			
+			sprintf(compiled, "%s.abi", argv[1]);
+			FILE * fp = fopen(compiled, "w");
+			// write abi data
+			genabi(fp);
+			fclose(fp);
+		}
+		else printf("Parsing failed.\n");
+		close(pipefd[0]);
+//	}
 	return 0;
 }
 
-int yywrap()
-{
+int yywrap() {
 	return 1;
 }

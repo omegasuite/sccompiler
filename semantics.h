@@ -8,9 +8,9 @@
 #include "ast.h"
 
 using namespace std;
-#define MAX_LEVEL 200
-#define MAX_DEPTH 200
-#define MAX_FUNCS 200
+#define MAX_LEVEL 1024
+#define MAX_DEPTH 1024
+#define MAX_FUNCS 2048
 
 struct ptr_cmp { //map compare char[] with their address; maybe it's better to use map <string, >
 	bool operator()(const char* s1, const char* s2) const {
@@ -22,8 +22,8 @@ struct SymbolTable {
 	map <char*, char*,ptr_cmp> table;
 	map <char*, vector<char *>, ptr_cmp > struct_table;
 	map <char*, vector<char *>, ptr_cmp > struct_id_table;
-	map < char*, int, ptr_cmp > struct_name_width_table;
-        map <char*, int, ptr_cmp> width_table; // records the num of "int"s, the actual width should be 4 times of that
+	map <char*, int, ptr_cmp > struct_name_width_table;
+    map <char*, int, ptr_cmp> width_table; // records the num of "int"s, the actual width should be 4 times of that
 	map <char*, vector<int>, ptr_cmp> array_size_table;
 	int parent_index;//which record the index of his parent in the upper level; -1 means it's the gloabl scope
 } env[MAX_LEVEL][MAX_DEPTH];
@@ -31,50 +31,71 @@ struct SymbolTable {
 int level = 0,cnt[MAX_LEVEL];// keep track num of symbol tables of this level
 map <char*, vector<int>, ptr_cmp > func_table;
 map <char*, int, ptr_cmp> func_cnt_table;
-map <char*,map<int,char*>, ptr_cmp > func_overload_table;
+
 vector <int> tmp_array_size_vector;
 vector <int> func_vector[MAX_FUNCS];
 vector <TreeNode*> pubfunc_vector;
 vector <char*> struct_vector[MAX_FUNCS];
 set <char*, ptr_cmp> func_set[MAX_FUNCS], struct_set[MAX_FUNCS];
-int func_cnt = 0, struct_cnt = 0, tmp_num_of_var = 0, func_vector_cnt = 0, struct_vector_cnt = 0, tmp_num = 1, tmp_num_struct = 0;
+
+// libs
+
+int lib_cnt = 0, func_cnt = 0, struct_cnt = 0, tmp_num_of_var = 0, func_vector_cnt = 0, struct_vector_cnt = 0, tmp_num = 1, tmp_num_struct = 0;
 bool in_func = false, in_for = false;
 
-TreeNode mainnode = NULL;
-TreeNode initnode = NULL;
+TreeNode * mainnode = NULL;
 
 int StringToInt(char *s);
 bool isReserved(char* s);
-void report_err(char *s1,char *s2, int linenum);
 void semantics_check(TreeNode* p);
 void semantics_check_program(TreeNode* p);
 void semantics_check_extdefs(TreeNode* p);
-void semantics_check_init(TreeNode *p);
-void semantics_check_exp(TreeNode *p, char *s);
+void semantics_check_exp(TreeNode *p);
 void semantics_check_extdef(TreeNode* p);
 void semantics_check_sextvars(TreeNode *p);
 void semantics_check_stspec(TreeNode* p);
-void semantics_check_paras(TreeNode *p,char *s);
+void semantics_check_paras(TreeNode *p);
+void semantics_check_para(TreeNode *p);
 char* semantics_check_type(TreeNode *p);
+void semantics_check_xtype(TreeNode *p);
 void semantics_check_func(TreeNode *p);
 void semantics_check_extvars(TreeNode *p);
-bool semantics_check_id(char* s,int num);
+bool semantics_check_id(TreeNode * p);
+void semantics_check_int(TreeNode * p);
+void semantics_check_string(TreeNode * p);
 void semantics_check_var(TreeNode *p);
 void semantics_check_stmtblock(TreeNode *p);
 void semantics_check_decs(TreeNode *p);
+void semantics_check_dec(TreeNode *p);
 void semantics_check_defs(TreeNode* p);
 void semantics_check_sdefs(TreeNode *p);
-void semantics_check_sdecs(TreeNode *p, int in);
+void semantics_check_sdef(TreeNode *p);
+void semantics_check_operator(TreeNode *p);
+void semantics_check_sdecs(TreeNode *p);
 void semantics_check_stmts(TreeNode* p);
 void semantics_check_arrs(TreeNode *p);
-void semantics_check_args(TreeNode *p, char *s);
+void semantics_check_args(TreeNode *p);
 void semantics_check_exps(TreeNode *p);
 void check_left_value_exps(TreeNode *p);
+void semantics_check_keyword(TreeNode *p);
 bool find_id(TreeNode *p);
 int find_struct_id(char* s, char*s2);
 void semantics_check_stmt(TreeNode *p);
 void semantics(TreeNode *p);
 //void struct_check_id(char* s1, char* s2);
+
+const char *binaryops[] = {"#", "+", "-", "*", "/", "%",
+                           "|", "&", "^", ">>", "<<",
+                           ">", "<", ">=", "<=", "==", "!=",
+                           "||", "&&", NULL };
+//                           "=", "+=", "-=", "*=", "/=", "|=", "&=", "#=", "^=", ">>=", "<<=", "%=", NULL};
+extern const char *assignops[];
+
+void nodeType(TreeNode* p, TreeNodeType t) {
+	if (p->type != t) {
+		fprintf(stderr,"Unexpected node type %d. Expect %d. node %s \n", p->type, t, p->data); assert(0);
+	}
+}
 
 int get_width_semantics(char* s) {
 	int tmp_level = level, tmp_depth = cnt[level];
@@ -108,8 +129,10 @@ bool isReserved(char* s) {
 	return false;
 }
 
-void report_err(char *s1, char *s2, int linenum) {
-	fprintf(stderr,"at line %d:\t",linenum);
+char * currentline = (char *) "";
+
+void report_err(const char *s1, const char *s2, int linenum) {
+	fprintf(stderr,"%s\nat line %d:\t",currentline, linenum);
 	if (s1!=NULL) fprintf(stderr,"%s ",s1);
 	if (s2!=NULL) fprintf(stderr,"%s ",s2);
 	fprintf(stderr,"\n");
@@ -118,7 +141,7 @@ void report_err(char *s1, char *s2, int linenum) {
 
 void semantics_check(TreeNode* p) {
 	switch (p->type) {
-		case _PROGRAM: semantics_check_program(p); break;
+		case _EXTDEFS: semantics_check_program(p); break;
 		case _EXTDEF: semantics_check_extdef(p); break;
 		case _STMTBLOCK: semantics_check_stmtblock(p); break;
 		case _EXTVARS: semantics_check_extvars(p); break;
@@ -127,58 +150,172 @@ void semantics_check(TreeNode* p) {
 		case _STMTS: semantics_check_stmts(p); break;
 		case _STMT: semantics_check_stmt(p); break;
 		case _DEFS: semantics_check_defs(p); break;
-		case _DEF: semantics_check_def(p); break;
 		case _SDEFS: semantics_check_sdefs(p); break;
 		case _SDECS: semantics_check_sdecs(p); break;
 		case _SDEF: semantics_check_sdef(p); break;
 		case _DEC: semantics_check_dec(p); break;
 		case _VAR: semantics_check_var(p); break;
-		case _INIT: semantics_check_init(p); break;
-
 		case _EXPS: semantics_check_exps(p); break;
 		case _PARAS: semantics_check_paras(p); break;
 		case _KEYWORDS: semantics_check_keyword(p); break;
 		case _PARA: semantics_check_para(p); break;
 		case _ARRS: semantics_check_arrs(p); break;
-		case _UNARYOP: semantics_check_uniaryop(p); break;
 		case _ID: semantics_check_id(p); break;
 		case _ARGS: semantics_check_args(p); break;
-		case _OPERATOR: semantics_check_operator(p); break;
-		case _INT: break;
-		case _STRING: break;
+		case _INT: semantics_check_int(p); break;
+		case _STRING: semantics_check_string(p); break;
+
 		case _NULL: break;//do nothing
 		default: fprintf(stderr,"%s \n", p->data); assert(0);
 	}
 }
 
-void semantics_check_exps(TreeNode *p) {
-	nodeType(p, _EXPS);
-	if (!strcmp(p->data,"exps f()")) {
-		if (func_table.find(p->children[0]->data)==func_table.end()) { //don't find the function
-			report_err(p->children[0]->data,"not declared",p->children[0]->line_num);
+void semantics_check_int(TreeNode *p) { //arguments of function
+	nodeType(p, _INT);
+}
+
+void semantics_check_string(TreeNode *p) { //arguments of function
+	nodeType(p, _STRING);
+}
+
+void semantics_check_args(TreeNode *p) { //arguments of function
+	for (int i = 0; i < p->size; ++i) {
+		semantics_check_exps(p->children[i]);
+	}
+}
+
+bool semantics_check_id(TreeNode *p) {
+	char* s = p->data;
+	int num = p->line_num;
+
+	if (isReserved(s)) {
+		report_err("Reserved words can not be used as identifiers", s,num);
+		return false;
+	}
+	if (env[level][cnt[level]].table.find(s)!=env[level][cnt[level]].table.end()){	//already exist
+			report_err("redeclearation of",s,num);
+			return false; 
+	}
+	else return true; //new variable name
+}
+
+void semantics_check_arrs(TreeNode *p) { //arrays
+	int i;
+	nodeType(p, _ARRS);
+	for (i = 0; i < p->size; ++i) {
+		semantics_check_exps(p->children[i]);
+	}
+}
+
+void semantics_check_keyword(TreeNode *p) {
+	nodeType(p, _KEYWORDS);
+}
+
+void semantics_check_xtype(TreeNode *p)
+{
+}
+
+void semantics_check_para(TreeNode *p) {
+	nodeType(p, _PARA);
+	semantics_check_xtype(p->children[0]);
+	semantics_check_var(p->children[1]);
+}
+
+void semantics_check_paras(TreeNode *p) {
+	nodeType(p, _PARAS);
+	if (p->size>=1) {
+		++tmp_num_of_var;
+		if (env[level+1][cnt[level+1]+1].table.find(p->children[0]->data)==env[level+1][cnt[level+1]+1].table.end()) {
+		 // to see whether multiple declarations of a variable
+			env[level+1][cnt[level+1]+1].table[p->children[0]->data] = (char*) "int";
+			env[level+1][cnt[level+1]+1].width_table[p->children[0]->data] = 1;
 		}
 		else {
-			int func_tmp = func_cnt_table[p->children[0]->data];
-			func_cnt_table[p->children[0]->data] = 0;
-			semantics_check_args(p->children[1],p->children[0]->data);
-		if (vector_find(func_table[p->children[0]->data],func_cnt_table[p->children[0]->data])) {
-				// num of variables match!
-				int v_num = vector_find_index(func_table[p->children[0]->data],func_cnt_table[p->children[0]->data]);
-				if (v_num>0) {
-					int t_num = func_cnt_table[p->children[0]->data];
-					rename(p->children[0],t_num); 
-				}
-			}
-			else {
-				report_err("number of arguments doesn't match: function", p->children[0]->data,p->children[0]->line_num);
-			}
-			func_cnt_table[p->children[0]->data] = func_tmp;
+			report_err("redefinition of", p->children[1]->data,p->children[1]->line_num);
 		}
 	}
-	else if (!strcmp(p->data,"exps ()")) {
-		semantics_check_exps(p->children[0]);
+	if (p->size==2) {semantics_check_paras(p->children[1]);}
+}
+
+bool in_array(const char * p, const char ** arr) {
+	while (*arr != NULL) {
+		if (!strcmp(p, *arr)) return true;
+		arr++;
 	}
-	else if (!strcmp(p->data,"exps arr")) { //intergers or arrays!!!!
+	return false;
+}
+
+const char *unaryops[] = {"+", "-", "*", "&", "~", "!"};
+
+void semantics_check_unary(TreeNode *p) {
+	if (!in_array(p->data,unaryops)) {
+		fprintf(stderr,"%s \n", p->data); assert(0);
+	}
+}
+
+void semantics_check_typearr(TreeNode *p) {
+	if (!strcmp(p->data,"typed array")) {
+		semantics_check_type(p->children[0]);
+		semantics_check_arrs(p->children[1]);
+	} else {
+		semantics_check_type(p);
+	}
+}
+
+bool vector_find(vector<int> p, int num) {
+	//cout << "vector_find" << endl;
+	int i, sz = p.size();
+	//cout << num << endl;
+	for (i = 0; i < sz; ++i) {
+		//cout << p[i] << endl;
+		if (p[i]==num) return true;
+	}
+	return false;
+}
+
+int vector_find_index(vector <int> s, int num) {
+	int sz =  s.size();
+	int i;
+	for (i = 0; i < sz; ++i) {
+		if (s[i]==num) return i;
+	}
+
+	return -1;
+}
+
+void semantics_check_exps(TreeNode *p) {
+	if (p->type == _ID) {
+		semantics_check_id(p);
+		return;
+	} else if (p->type == _INT) {
+		semantics_check_int(p);
+		return;
+	} if (p->type == _STRING) {
+		semantics_check_string(p);
+		return;
+	}
+
+	nodeType(p, _EXPS);
+	if (in_array(p->data,binaryops)) {
+		semantics_check_exps(p->children[0]);
+		semantics_check_exps(p->children[1]);
+	} else if (!strcmp(p->data,"?")) {
+		semantics_check_exps(p->children[0]);
+		semantics_check_exps(p->children[1]);
+		semantics_check_exps(p->children[2]);
+	} else if (!strcmp(p->data,"cast exp")) {
+		semantics_check_type(p->children[0]);
+		semantics_check_exps(p->children[1]);
+	} else if (!strcmp(p->data,"cast * exp")) {
+		semantics_check_type(p->children[0]);
+		semantics_check_exps(p->children[1]);
+	} else if (!strcmp(p->data,"exps unary")) {
+		semantics_check_unary(p->children[0]);
+		semantics_check_exps(p->children[1]);
+	} else if (!strcmp(p->data,"sizeof")) {
+		semantics_check_typearr(p->children[0]);
+	} else if (!strcmp(p->data,"exps arr")) { //intergers or arrays!!!!
+/*
 		if (!find_id(p->children[0])) {
 			report_err("No variable named",p->children[0]->data,p->children[0]->line_num);
 		}
@@ -195,52 +332,54 @@ void semantics_check_exps(TreeNode *p) {
 				report_err(p->children[0]->data,"is not array",p->children[0]->line_num);
 			}
 		}
-	}
-	else if (!strcmp(p->data,"exps unary")) { //unary operations
-		if (!strcmp(p->children[0]->data,"++")||!strcmp(p->children[0]->data,"--")) {
-			check_left_value_exps(p->children[1]);
+*/
+	} else if (!strcmp(p->data,"exps f()")) {
+		if (func_table.find(p->children[0]->data)==func_table.end()) { //don't find the function
+			report_err(p->children[0]->data,"not declared",p->children[0]->line_num);
+		} else {
+			int func_tmp = func_cnt_table[p->children[0]->data];
+			func_cnt_table[p->children[0]->data] = 0;
+			if (p->size > 1) semantics_check_args(p->children[1]);
+			if (vector_find(func_table[p->children[0]->data],func_cnt_table[p->children[0]->data])) {
+				// num of variables match!
+				int v_num = vector_find_index(func_table[p->children[0]->data],func_cnt_table[p->children[0]->data]);
+				if (v_num>0) {
+					report_err("overload: function", p->children[0]->data,p->children[0]->line_num);
+				}
+			} else {
+				report_err("number of arguments doesn't match: function", p->children[0]->data,p->children[0]->line_num);
+			}
+			func_cnt_table[p->children[0]->data] = func_tmp;
 		}
-		semantics_check_exps(p->children[1]);
-	}
-	else if (!strcmp(p->data,"exps struct")) { //structs!!!
-		int sjtu = find_struct_id(p->children[0]->data,p->children[2]->data);
-		if (sjtu==0) {
-			report_err("No such struct named", p->children[0]->data,p->children[0]->line_num);
-		}
-		else if (sjtu==-1){
-			report_err("struct has no varibale named", p->children[2]->data,p->children[2]->line_num);
-		}
-	}
-	else if (!strcmp(p->data,"=")) {
-		check_left_value_exps(p->children[0]);
+	} else if (!strcmp(p->data,"lib call ()") || !strcmp(p->data,"execute ()")) {
+		semantics_check_id(p->children[0]);
+		semantics_check_id(p->children[1]);
+		if (p->size > 2) semantics_check_args(p->children[2]);
+	} else if (!strcmp(p->data,"exps struct") || !strcmp(p->data,"exps struct ptr")) {
+/*
+        int sjtu = find_struct_id(p->children[0]->data, p->children[1]->data);
+        if (sjtu == 0) {
+            report_err("No such struct named", p->children[0]->data, p->children[0]->line_num);
+        } else if (sjtu == -1) {
+            report_err("struct has no varibale named", p->children[1]->data, p->children[1]->line_num);
+        }
+*/
+ 	} else if (!strcmp(p->data,"exps ()")) {
 		semantics_check_exps(p->children[0]);
-		semantics_check_exps(p->children[1]);
-	}
-	else {
-		int i;
-		for (i = 0; i < p->size; ++i) {
-			semantics_check_exps(p->children[i]);
-		}
-	}
-}
-
-void semantics_check_init(TreeNode *p) {
-	nodeType(p, _INIT);
-	if (!strcmp(p->data,"init")) {
-		semantics_check_exps(p->children[0]);
-	}
-	else {
-		semantics_check_args(p,NULL); // array/struct initialization
+	} else if (!strcmp(p->data, "deference")) {
+        semantics_check_exps(p->children[0]);
+    } else {
+		fprintf(stderr,"%s \n", p->data); assert(0);
 	}
 }
 
 void semantics_check_var(TreeNode *p) {//OK
 	nodeType(p, _VAR);
 	if (p->size==1) {
-		if (semantics_check_id(p->children[0]->data,p->children[0]->line_num)) {  //new variable name
+		if (semantics_check_id(p->children[0])) {  //new variable name
 			if (level==0&&func_table.find(p->children[0]->data)!=func_table.end()) 
 				{report_err("redefinition of", p->children[0]->data,p->children[0]->line_num);}
-			env[level][cnt[level]].table[p->children[0]->data] = "int";
+			env[level][cnt[level]].table[p->children[0]->data] = (char*) "int";
 			env[level][cnt[level]].width_table[p->children[0]->data] = tmp_num;
 			int i,j;
 			vector <int> final_vector;
@@ -264,14 +403,13 @@ void semantics_check_var(TreeNode *p) {//OK
 	}
 }
 
+void semantics_check_operator(TreeNode *p) {
+	nodeType(p, _OPERATOR);
+}
+
 void semantics_check_dec(TreeNode *p) {
 	nodeType(p, _DEC);
 	semantics_check_var(p->children[0]);
-
-	if (p->size > 1) {
-		semantics_check_operator(p->children[1]);
-		semantics_check_init(p->children[2]);
-	}
 }
 
 void semantics_check_sdecs(TreeNode *p) {
@@ -292,27 +430,40 @@ void semantics_check_sdecs(TreeNode *p) {
 void semantics_check_sdef(TreeNode *p) { //inside of a struct
 	int i;
 	nodeType(p, _SDEF);
-	semantics_check_type(p->children[0]);
-	semantics_check_sdecs(p->children[1]);
+	for (int i = 0; i < p->size; i++) {
+        TreeNode * q = p->children[i];
+        if (q->type == _SDEF) semantics_check_extvars(q);
+        else if (q->type == _ID) semantics_check_id(q);
+        else if (q->type == _EXTVARS) semantics_check_extvars(q);
+        else report_err(q->data," type incorrect",q->line_num);
+	}
 }
 
 void semantics_check_sdefs(TreeNode *p) { //inside of a struct
 	int i;
 	nodeType(p, _SDEFS);
 	for (i = 0; i < p->size; i++) {
-		semantics_check_sdef(p->children[i]);
+        semantics_check_extvars(p->children[i]);
 	}
+}
+
+void semantics_check_extvars(TreeNode* p) {
+    nodeType(p, _EXTVARS);
+//    if (!strcmp(p->data, "var list")) {
+        for (int i = 0; i < p->size; ++i) {
+            semantics_check_id(p->children[i]);
+            if (p->children[i]->size > 0)
+                semantics_check_xtype(p->children[i]->children[0]);
+        }
+//    }
 }
 
 void semantics_check_def(TreeNode* p) {
 	int i;
-	nodeType(p, _DEF);
-	if (p->size != 2) {
-		report_err("DEF must have 2 children",NULL,p->line_num);
-		return;
-	}
-	semantics_check_xtype(p->children[0]);
-	semantics_check_extvars(p->children[1]);
+	nodeType(p, _EXTDEF);
+    for (i = 0; i < p->size; ++i) {
+        semantics_check_extvars(p->children[i]);
+    }
 }
 
 void semantics_check_defs(TreeNode* p) {
@@ -323,11 +474,18 @@ void semantics_check_defs(TreeNode* p) {
 	}
 }
 
+void semantics_check_init(TreeNode* p);
+
 void semantics_check_stmt(TreeNode *p) {
-	if (!strcmp("stmtblock {}",p->data)) semantics_check_stmtblock(p);
+	if (!strcmp("stmtblock {}",p->data)) {
+	    semantics_check_stmtblock(p);
+	    return;
+	}
 	else nodeType(p, _STMT);
 
-	if (!strcmp(p->data,"stmt: exp;")) {
+	if (!strcmp(p->data,"stmt: asm;")) {
+		return;
+	} else if (!strcmp(p->data,"stmt: exp;")) {
 		switch (p->children[0]->type) {
 		case _NULL: return;
 		case _ID: semantics_check_id(p->children[0]); return;
@@ -344,6 +502,8 @@ void semantics_check_stmt(TreeNode *p) {
 		semantics_check_exps(p->children[0]);
 		semantics_check_stmt(p->children[1]);
 		if (p->size == 3) semantics_check_stmt(p->children[2]);
+    } else if (!strcmp("exps stmt",p->data)) {
+        semantics_check_exps(p->children[0]);
 	} else if (!strcmp("for stmt",p->data)) {
 		semantics_check_exps(p->children[0]);
 		in_for = true;
@@ -356,9 +516,35 @@ void semantics_check_stmt(TreeNode *p) {
 	} else if (!strcmp("break stmt",p->data)) {
 		if (!in_for) {
 			report_err(p->children[0]->data,"not in a loop",p->children[0]->line_num);
+		}	} else if (!strcmp("break stmt",p->data)) {
+		if (!in_for) {
+			report_err(p->children[0]->data,"not in a loop",p->children[0]->line_num);
 		}
-	else {
-		report_err(p->children[0]->data, ": unknown statement type", p->children[0]->line_num);
+	} else if (!strcmp("=",p->data)) {
+        if (p->children[1]->type == _INIT) {
+            semantics_check_i(p->children[0]);
+            semantics_check_init(p->children[1]);
+        } else {
+            semantics_check_exps(p->children[0]);
+            semantics_check_exps(p->children[1]);
+        }
+	} else if (in_array(p->data, assignops)) {
+        semantics_check_exps(p->children[0]);
+        semantics_check_exps(p->children[1]);
+    } else {
+        report_err(p->children[0]->data, ": unknown statement type", p->children[0]->line_num);
+	}
+}
+
+void semantics_check_init(TreeNode* p) {
+	int i;
+	nodeType(p, _INIT);
+	for (i = 0; i < p->size; ++i) {
+	    if (p->children[i]->type != _EXPS) {
+	        semantics_check_init(p->children[i]);
+        } else {
+            semantics_check_exps(p->children[i]);
+	    }
 	}
 }
 
@@ -371,18 +557,25 @@ void semantics_check_stmts(TreeNode* p) {
 }
 
 char * semantics_check_type(TreeNode *p) {
-	if (!strcmp(p->data, "func ()")	{
+	if (!strcmp(p->data, "func ()"))	{
 		semantics_check_func(p->children[0]);
-	} else if (!strcmp(p->data, "pointer of") {
+	} else if (!strcmp(p->data, "pointer of")) {
 		semantics_check_type(p->children[0]);
-	} else if (!strcmp(p->data, "stspec identifier {}") {
+	} else if (!strcmp(p->data, "stspec identifier {}")) {
+		semantics_check_operator(p->children[0]);
+		semantics_check_id(p->children[1]);
+		if (p->size == 3) semantics_check_sdefs(p->children[2]);
+	} else if (!strcmp(p->data, "union identifier {}")) {
 		semantics_check_operator(p->children[0]);
 		semantics_check_id(p->children[1]);
 		semantics_check_sdefs(p->children[2]);
-	} else if (!strcmp(p->data, "stspec {}") {
+	} else if (!strcmp(p->data, "stspec {}")) {
 		semantics_check_operator(p->children[0]);
 		semantics_check_sdefs(p->children[1]);
-	} else if (!strcmp(p->data, "typed array") {
+	} else if (!strcmp(p->data, "union {}")) {
+		semantics_check_operator(p->children[0]);
+		semantics_check_sdefs(p->children[1]);
+	} else if (!strcmp(p->data, "typed array")) {
 		semantics_check_type(p->children[0]);
 		semantics_check_arrs(p->children[1]);
 	} else if (p->size != 0) {
@@ -392,50 +585,17 @@ char * semantics_check_type(TreeNode *p) {
 }
 
 void semantics_check_func(TreeNode *p) { 
-	int pub;
-
 	nodeType(p, _FUNC);
-	if (!strcmp(p->data, "pub func ()")) {
-		pub = 1
-	} else if (!strcmp(p->data, "func ()")) {
-		pub = 0
-	} else {
-		fprintf(stderr,"Unknown func type: %s \n", p->data); assert(0);
-	}
 
 	++func_cnt;
 
-	if (semantics_check_id(p->children[1]->data, p->children[1]->line_num)) { // no conflict with the name of int variables and struct variables
+	if (semantics_check_id(p->children[0])) { // no conflict with the name of int variables and struct variables
 		tmp_num_of_var = 0;
-		if (p->size == 3) semantics_check_paras(p->children[2]);
-
-		semantics_check_type(p->children[0]);
-
-		if (func_table.find(p->children[1]->data) == func_table.end()) { // new function name
-			if (!strcmp(p->children[1]->data,"main")) {mainnode = p;}
-			if (!strcmp(p->children[1]->data,"init")) {initnode = p;}
-			func_table[p->children[1]->data] = func_vector[func_vector_cnt];
-			func_table[p->children[1]->data].push_back(tmp_num_of_var);
-
-			if (pub) pubfunc_vector.push_back(p);
-
-			++func_vector_cnt;
-		}
-		else {	// function name exists, don't allow overloaded function
-			report_err("multiple definitions of", p->children[1]->data,p->children[1]->line_num);
-		}
+		if (p->size > 1) semantics_check_paras(p->children[1]);
 	}
 	else {
-		report_err("conflicting names of", p->children[1]->data,p->children[1]->line_num);
+		report_err("conflicting names of", p->children[0]->data,p->children[1]->line_num);
 	}
-}
-
-void semantics_check_extvars(TreeNode *p) {
-	int i;
-	nodeType(p, _EXTVARS);
-	for (i = 0; i < p->size; ++i) {
-		semantics_check_dec(p->children[i]);
-	}	
 }
 
 void semantics_check_stmtblock(TreeNode *p) {
@@ -467,28 +627,52 @@ void semantics_check_stmtblock(TreeNode *p) {
 	--level;
 }
 
-void nodeType(TreeNode* p, TreeNodeType t) {
-	if (p->type != t) {
-		fprintf(stderr,"Unexpected node type %d. Expect %d. node %s \n", p->type, t, p->data); assert(0);
-	}
-}
-
 void semantics_check_program(TreeNode* p) {//OK
 	int i;
-	nodeType(p, _PROGRAM);
+	nodeType(p, _EXTDEFS);
 	for (i = 0; i < p->size; ++i) {
 		semantics_check_extdef(p->children[i]);
 	}
 }
 
 void semantics_check_extdef(TreeNode* p) {
-	nodeType(p, _EXTDEF);
-	if (!strcmp("extdef",p->data)) {//global variable declearations
-		semantics_check_xtype(p->children[0]);
-		semantics_check_extvars(p->children[1]);
-	}
-	else { //function declarations
-		semantics_check_type(p->children[0]);
+    if (!strcmp("extdef",p->data)) {//global variable declearations
+        nodeType(p, _EXTDEF);
+        semantics_check_xtype(p->children[0]);
+//		semantics_check_extvars(p->children[1]);
+    } else if (!strcmp("stspec identifier {}",p->data)) {//global variable declearations
+        nodeType(p, _TYPE);
+        semantics_check_type(p);
+//		semantics_check_extvars(p->children[1]);
+    } else if (!strcmp("import",p->data)) {//global variable declearations
+        semantics_check_id(p->children[0]);
+//		semantics_check_extvars(p->children[1]);
+    } else { //function declarations
+        nodeType(p, _EXTDEF);
+		semantics_check_type(p->children[0]->children[0]);
+        int pub;
+
+        if (!strcmp(p->children[1]->data, "pub func ()")) {
+            pub = 1;
+        } else if (!strcmp(p->children[1]->data, "func ()")) {
+            pub = 0;
+        } else {
+            fprintf(stderr,"Unknown func type: %s \n", p->children[0]->data); assert(0);
+        }
+
+        if (func_table.find(p->children[0]->data) == func_table.end()) { // new function name
+            if (!strcmp(p->children[0]->data,"constructor")) {mainnode = p;}
+            func_table[p->children[0]->data] = func_vector[func_vector_cnt];
+            func_table[p->children[0]->data].push_back(tmp_num_of_var);
+
+            if (pub) pubfunc_vector.push_back(p);
+
+            ++func_vector_cnt;
+        }
+        else {	// function name exists, don't allow overloaded function
+            report_err("multiple definitions of", p->children[1]->data,p->children[1]->line_num);
+        }
+
 		semantics_check_func(p->children[1]);
 		in_func = true;
 		semantics_check_stmtblock(p->children[2]);
@@ -534,12 +718,12 @@ void semantics_check_sextvars_1(char *s, TreeNode *p) {
 			}
 		}
 	}
-	if (semantics_check_id(p->children[0]->data,p->children[0]->line_num)&&func_table.find(p->children[0]->data)!=func_table.end()) {
+	if (semantics_check_id(p->children[0])&&func_table.find(p->children[0]->data)!=func_table.end()) {
 		report_err("redefinition of",p->children[0]->data,p->children[0]->line_num);
 	}
 	else {
 		env[level][cnt[level]].struct_table[p->children[0]->data] = env[tmp_level][tmp_depth].struct_id_table[s];
-		env[level][cnt[level]].table[p->children[0]->data] = "struct";
+		env[level][cnt[level]].table[p->children[0]->data] = (char*) "struct";
 		//fprintf(stderr,"flag %s  \n", p->children[0]->data);
 		env[level][cnt[level]].width_table[p->children[0]->data] = env[tmp_level][tmp_depth].struct_name_width_table[s];
 	}
@@ -579,34 +763,6 @@ void semantics_check_stspec(TreeNode* p) {  //struct
 	}
 }
 
-void semantics_check_paras(TreeNode *p,char *s) {
-	nodeType(p, _PARAS);
-	if (p->size>=1) {
-		++tmp_num_of_var;
-		if (env[level+1][cnt[level+1]+1].table.find(p->children[0]->data)==env[level+1][cnt[level+1]+1].table.end()) {
-		 // to see whether multiple declarations of a variable
-			env[level+1][cnt[level+1]+1].table[p->children[0]->data] = "int";
-			env[level+1][cnt[level+1]+1].width_table[p->children[0]->data] = 1;
-		}
-		else {
-			report_err("redefinition of", p->children[1]->data,p->children[1]->line_num);
-		}
-	}
-	if (p->size==2) {semantics_check_paras(p->children[1],s);}
-}
-
-
-bool vector_find(vector<int> p, int num) {
-	//cout << "vector_find" << endl;
-	int i, sz = p.size();
-	//cout << num << endl;
-	for (i = 0; i < sz; ++i) {
-		//cout << p[i] << endl;
-		if (p[i]==num) return true;
-	}
-	return false;
-}
-
 void rename(TreeNode *p, int num) {
 	char *s = new char[strlen(p->data)+2];
 	s[0] = '_';
@@ -616,18 +772,6 @@ void rename(TreeNode *p, int num) {
 		s[i] = p->data[i-2];
 	}
 	p->data = s;
-}
-
-bool semantics_check_id(char* s,int num) { 
-	if (isReserved(s)) {
-		report_err("Reserved words can not be used as identifiers", s,num);
-		return false;
-	}
-	if (env[level][cnt[level]].table.find(s)!=env[level][cnt[level]].table.end()){	//already exist
-				report_err("redeclearation of",s,num);
-				return false; 
-	}
-	else return true; //new variable name
 }
 
 void semantics_check_decs(TreeNode *p)
@@ -642,40 +786,11 @@ void semantics_check_decs(TreeNode *p)
 	}
 }
 
-void semantics_check_arrs(TreeNode *p) { //arrays
-	int i;
-	nodeType(p, _ARRS);
-	for (i = 0; i < p->size; ++i) {
-		semantics_check(p->children[i]);
-	}
-}
-
-void semantics_check_args(TreeNode *p, char *s) { //arguments of function
-	//cout << "args" << endl;
-	if (s==NULL) return;
-	if (p->size==2) {
-		semantics_check_exp(p->children[0],s);//1 means it's the check process of arguemnts
-		semantics_check_args(p->children[1],s);
-	}
-	else {
-		semantics_check_exp(p->children[0],s);
-	}
-}
-
-int vector_find_index(vector <int> s, int num) {
-	int sz =  s.size();
-	int i;
-	for (i = 0; i < sz; ++i) {
-		if (s[i]==num) return i;
-	}
-}
-
-
 int find_struct_id(char *s,char *s2) {
 	int tmp_level = level, tmp_depth = cnt[level];
         int bool_find = 0;
 	while (1) {
-if (env[tmp_level][tmp_depth].table.find(s)!=env[tmp_level][tmp_depth].table.end()&&!strcmp(env[tmp_level][tmp_depth].table[s],"struct")) { 
+		if (env[tmp_level][tmp_depth].table.find(s)!=env[tmp_level][tmp_depth].table.end()&&!strcmp(env[tmp_level][tmp_depth].table[s],"struct")) { 
 			//find
 			if (s2==NULL) return 1;
 			int i;
@@ -718,6 +833,7 @@ bool find_id(TreeNode *p) {
 	return bool_find;
 }
 
+/*
 void check_left_value_exps(TreeNode *p) {
 	//cout << "p->data " << p->data << endl;
 	if (!strcmp(p->data,"=")) {
@@ -729,7 +845,7 @@ void check_left_value_exps(TreeNode *p) {
 	}
 	else {report_err("lvalue required as left operand assignment",NULL,p->line_num);}
 }
-
+*/
 
 void semantics(TreeNode *p) {
 	semantics_check(p);

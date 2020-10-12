@@ -1,20 +1,27 @@
-LEX=lex
-YACC=yacc
-CC=g++
+LEX=flex
+YACC=bison
+CC=gcc
+CP=g++
 
-scc:lex.yy.o y.tab.o
-	$(CC) y.tab.c -g -ly -ll -o scc 2> error.err
-lex.yy.o:lex.yy.c y.tab.h
-	$(CC) -c lex.yy.c 2> error.err
+# set PATH=C:\WINDOWS\system32;C:\WINDOWS;C:\WINDOWS\System32\WindowsPowerShell\v1.0\;F:\MinGW\mingw32\bin;c:\GnuWin32\bin;
+#	$(CP) -std=c++11 y.tab.cpp cJSON.c -g -ly -lfl -o scc
 
-y.tab.o:y.tab.c def.h ast.h semantics.h translate.h optimize.h interprete.h
-	$(CC) -c y.tab.c 2> error.err
+scc:y.tab.cpp cJSON.c lex.yy.cpp
 
-y.tab.c y.tab.h:smallc.y header.h def.h ast.h semantics.h translate.h optimize.h interprete.h
-	$(YACC) smallc.y -v -d
+lex.yy.o:lex.yy.cpp y.tab.hpp
+	$(CC) -std=c++11 -c lex.yy.cpp
+	
+y.tab.o:y.tab.cpp def.h ast.h semantics.h translate.hpp optimize.h interprete.h
+	$(CC) -std=c++11 -c y.tab.cpp
+	
+cJSON.o:cJSON.c cJSON.h
+	$(CC) -std=c++11 -c cJSON.c
+	
+y.tab.cpp y.tab.hpp:smallc.y header.h def.h ast.h semantics.h translate.hpp optimize.h interprete.h
+	$(YACC) -oy.tab.cpp smallc.y -v -d
 
-lex.yy.c:smallc.l header.h def.h ast.h semantics.h translate.h optimize.h interprete.h
-	$(LEX) smallc.l
+lex.yy.cpp:smallc.l header.h def.h ast.h semantics.h translate.hpp optimize.h interprete.h
+	$(LEX) -olex.yy.cpp smallc.l
 
 clean:
-	rm -f *.o *.c *.h
+	rm -f *.o

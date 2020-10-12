@@ -51,14 +51,11 @@ L?\"(\\.|[^\\"])*\"	{ int i;for (i = 0; yytext[i];++i) {if (yytext[i]=='\n') yyl
 "unsigned"		{ count(); return(UNSIGNED); }
 "while"			{ count(); return(WHILE); }
 "public"		{ count(); return(PUBLIC); }
-
 {L}({L}|{D})*		{ count(); return(check_type()); }
-
 0[xX]{H}+{IS}?		{ count(); return(CONSTANT); }
 0{D}+{IS}?		{ count(); return(CONSTANT); }
 {D}+{IS}?		{ count(); return(CONSTANT); }
 L?'(\\.|[^\\'])+'	{ count(); return(CONSTANT); }
-
 ">>="			{ count(); return(RIGHT_ASSIGN); }
 "<<="			{ count(); return(LEFT_ASSIGN); }
 "+="			{ count(); return(ADD_ASSIGN); }
