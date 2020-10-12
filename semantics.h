@@ -522,7 +522,7 @@ void semantics_check_stmt(TreeNode *p) {
 		}
 	} else if (!strcmp("=",p->data)) {
         if (p->children[1]->type == _INIT) {
-            semantics_check_i(p->children[0]);
+            semantics_check_id(p->children[0]);
             semantics_check_init(p->children[1]);
         } else {
             semantics_check_exps(p->children[0]);
