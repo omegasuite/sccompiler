@@ -10,7 +10,7 @@ To further translate assembly code to VM code, use http://omegasuite.org/omega/a
 
 Win 64 excutable is include for your convenience. To compile, run:
 
-sc.exe <source file name>
+sc.exe &lt;source file name&gt;
 
 Make sure the file buildin.c is in your source code directory.
 
@@ -41,17 +41,17 @@ is loaded as a lib.
     Thus by "int * a, b;", both a and a are int pointers. (not like C).
 12. Can not initialize variables at the time of declaration. Thus int a = 1; is illegal.
 13. You may call another contract. To call it, you need to import the callee first using import statement:
-	import <contract name>;
-    Compiler will find corresponding <contract name>.abi file to imports its interface. Note: make sure "address"
+	import &lt;contract name&gt;;
+    Compiler will find corresponding &lt;contract name&gt;.abi file to imports its interface. Note: make sure "address"
     is correct.
 14. There are two ways to call another contract's public function. As lib or as independent contract. To call
-it as lib, a libload("<contract name>") call must be executed at least once before call to the function. Multiple
+it as lib, a libload("&lt;contract name&gt;") call must be executed at least once before call to the function. Multiple
 libload call is OK, but only the first has effect. Then you may call another contract's public function as follows:
-	<contract name>::func(parameters);
+	&lt;contract name&gt;::func(parameters);
     In this type call, func uses present contract's persistent storage space and memory space as if the code
 is the present contract's own.
     Another way call to another contract's public function is:
-	<contract name>::execute(parameters);
+	&lt;contract name&gt;::execute(parameters);
     In this type call, func uses callee contract's storage space amd indenpendent memory space, thus passing
 a pointer to the contract will generate an error when the pointer is used. No need to call libload before execute().
 15. For anything else, see the examples.
