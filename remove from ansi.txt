@@ -1,7 +1,0 @@
-"auto"			{ count(); return(AUTO); }
-"double"		{ count(); return(DOUBLE); }
-"float"			{ count(); return(FLOAT); }
-"volatile"		{ count(); return(VOLATILE); }
-"void"			{ count(); return(VOID); }
-"extern"		{ count(); return(EXTERN); }
-"register"		{ count(); return(REGISTER); }
