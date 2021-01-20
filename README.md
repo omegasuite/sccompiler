@@ -8,7 +8,7 @@ assembly spec and http://omegasuite.org/omega/files/ovmbcspec.html for VM code s
 
 To further translate assembly code to VM code, use http://omegasuite.org/omega/assemble.php.
 
-Win 64 excutable is include for your convenience. Tu compile, run:
+Win 64 excutable is include for your convenience. To compile, run:
 
 sc.exe <source file name>
 
