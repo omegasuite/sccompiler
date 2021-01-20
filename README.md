@@ -12,7 +12,7 @@ Win 64 excutable is include for your convenience. Tu compile, run:
 
 sc.exe <source file name>
 
-Make sure file buildin.c is in your source code file.
+Make sure the file buildin.c is in your source code directory.
 
 The compiler will generate two files with .asm and .abi suffixes. The one with .asm suffix contains
 assembly code. Copy and paste it to http://omegasuite.org/omega/assemble.php, will generate VM code
