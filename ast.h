@@ -130,10 +130,17 @@ char buffer[MAX_LENGTH];
 
 char * substr(char * st, int s, int l) {
 	char * d = (char*) malloc(l + 1);
-	st += s;
-	l++;
-	while (*st && l--) *d++ = *st++;
-	return d;
+    char * d0 = d;
+	if (s >= 0) {
+        st += s;
+        l++;
+        while (*st && l--) *d++ = *st++;
+        *d = '\0';
+    } else {
+        while (*st && l--) *d++ = *st++;
+        *(d + s) = '\0';
+    }
+	return d0;
 }
 
 bool back_print(TreeNode* ptr, TreeNode* stopper, int depth) {
@@ -216,8 +223,10 @@ const char *nodetypestr[] = {
 	"_DEC",
 	"_PARA",
 	"_STRING",
+	"_POINTER",
 	"_NULL",
-	"_NIL"};
+	"_NIL",
+	"_INIT"};
 
 void print_ast(TreeNode* ptr, int depth) {
     int i;
@@ -253,7 +262,7 @@ void print_ast(TreeNode* ptr, int depth) {
     if (ptr->size > 0) {
         printf("%s %s\n", nodetypestr[ptr->type], ptr->data);
     } else {
-        printf("\033[31;1m%s %s\033[0m\n", nodetypestr[ptr->type], ptr->data);
+        printf("%s %s\n", nodetypestr[ptr->type], ptr->data);
         /*
         for (i = 0; i < n; i++) {
             putchar(buffer[i]);

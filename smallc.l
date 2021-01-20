@@ -14,10 +14,10 @@ char * substr(char *, int, int);
 %%
 [ \t\v\f]+ { scanner(yytext); }
 [\n] { scanner(yytext); yylineno = yylineno+1;}
-\"([^"\n]|\\\")*\" {int i; scanner(yytext); for (i = 0; yytext[i];++i) {if (yytext[i]=='\n') yylineno++;} yylval.string = strdup(yytext); return STRING;}
+\"([^"\n]|\\\")*\" {int i; scanner(yytext); for (i = 0; yytext[i];++i) {if (yytext[i]=='\n') yylineno++;} yytext[strlen(yytext) - 1] = '\0'; yylval.string = strdup(yytext + 1); return STRING;}
 \/\/[^\n]* { }
 @@([^@]|@[^@])*@@ {int i; scanner(yytext); for (i = 0; yytext[i];++i) {if (yytext[i]=='\n') yylineno++;} yylval.string = strdup(yytext + 2); yylval.string[strlen(yylval.string) - 2] = '\0'; return ASM;}
-([0-9]+|0[xX][0-9a-fA-F]+)          { scanner(yytext); yylval.string = strdup(yytext); return INT; }
+([0-9]+|0[x][0-9a-f]+)          { scanner(yytext); yylval.string = strdup(yytext); return INT; }
 '(\\.|[^\\'])'	{ scanner(yytext); yylval.string = substr(yytext, 1, 1); return INT; }
 "(" { scanner(yytext); yylval.string = strdup(yytext); return '(';}
 ")" { scanner(yytext); yylval.string = strdup(yytext); return ')';}
@@ -80,12 +80,12 @@ char * substr(char *, int, int);
 "|=" { scanner(yytext); yylval.string = strdup(yytext); return OR_ASSIGN;}
 ">>" { scanner(yytext); yylval.string = strdup(yytext); return RIGHT_OP;}
 "<<" { scanner(yytext); yylval.string = strdup(yytext); return LEFT_OP;}
-"&&" { scanner(yytext); yylval.string = strdup(yytext); return AND_OP;}
-"||" { scanner(yytext); yylval.string = strdup(yytext); return OR_OP;}
 "<=" { scanner(yytext); yylval.string = strdup(yytext); return LE_OP;}
 ">=" { scanner(yytext); yylval.string = strdup(yytext); return GE_OP;}
 "==" { scanner(yytext); yylval.string = strdup(yytext); return EQ_OP;}
 "!=" { scanner(yytext); yylval.string = strdup(yytext); return NE_OP;}
+"&&" { scanner(yytext); yylval.string = strdup(yytext); return AND_OP;}
+"||" { scanner(yytext); yylval.string = strdup(yytext); return OR_OP;}
 ">>=" { scanner(yytext); yylval.string = strdup(yytext); return RIGHT_ASSIGN;}
 "<<=" { scanner(yytext); yylval.string = strdup(yytext); return LEFT_ASSIGN;}
 . { scanner(yytext); yyerror((char*)"Error!");}

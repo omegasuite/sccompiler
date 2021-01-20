@@ -1,7 +1,9 @@
 
 void exptype(TreeNode *p, expression *res) {
+    res->takeaddr = false;
     if (res->type == 0) {
-        switch (getsize(p)) {
+        switch (getsize(p, false)) {
+            case 0: res->type = 0; break;
             case 1: res->type = 8; break;
             case 2: res->type = 16; break;
             case 4: res->type = 32; break;
@@ -13,7 +15,7 @@ void exptype(TreeNode *p, expression *res) {
         }
         res->usign = isunsigned(p);
     } else {
-        int t = getsize(p);
+        int t = getsize(p, false);
         if (t > 0 && t * 8 != res->type)
             report_err("Invalid type in expression： ", p->data, p->line_num);
     }
@@ -90,7 +92,7 @@ void collectDefs(TreeNode* q, map<char*, TreeNode*, ptr_cmp> * myspace) {
             for (int i = 0; i < p->size; i++) {
                 p->children[i]->address = (char *) malloc(16);
                 sprintf(p->children[i]->address, "%d", t);
-                t += getsize(p->children[i]->children[0]);
+                t += getsize(p->children[i]->children[0], true);
             }
             (*myspace)[q->children[1]->data] = q;
         } else
@@ -176,6 +178,10 @@ bool matchingTypes(TreeNode *p, TreeNode *q) {
     if ((p->type == _INT && isinttype(q)) || (q->type == _INT && isinttype(p)))
         return true;
 
+    if ((p->type == _NIL && q->type == _TYPE && !strcmp(q->data, "pointer of")) ||
+        (q->type == _NIL && p->type == _TYPE && !strcmp(p->data, "pointer of")))
+        return true;
+
     if (p->type != q->type) return false;
 
     if (p->type == _INT) return false;
@@ -220,28 +226,28 @@ int assign(TreeNode *p, int at, bool global) { // pointer, struct
             p->size = 1;
         }
 
-        return at + getsize(p->children[0]);
+        return at + getsize(p->children[0], true);
     } else if (p->type == _STRING) {
         char * s = (char*) malloc(2 * (strlen(p->data) + 1) + 2), * t, * d;
 
         s[0] = 'x';
-        for (t = s + 1, d = p->data + 1; *d; d++) {
+        for (t = s + 1, d = p->data; *d; d++) {
             *t++ = tohex[(*d >> 4) & 0xF];
             *t++ = tohex[(*d) & 0xF];
         }
-        *t = '\0'; *--t = '0'; *--t = '0';
+        *t = '\0';// *--t = '0'; *--t = '0';
 
-        auto addr = strclloc.find(t);
+        auto addr = strclloc.find(p->data);
         if (addr == strclloc.end()) {
             p->address = strdup((string("@ii0'") + to_string(at)).data());
-            strclloc[t] = p->address;
-            at += strlen(p->data) - 1;
+            strclloc[p->data] = p->address;
+            at += strlen(p->data) + 1;
             assignments += string("; Assign ") + p->address + " to string " + p->data + "\n";
-            assignments += string("COPYIMM ") + p->address + ",L" + to_string(strlen(p->data) - 1) + "," + s + ",\n";
+            assignments += string("COPYIMM ") + p->address + ",L" + to_string(strlen(p->data) + 1) + "," + s + "00,\n";
         } else p->address = addr->second;
 
         free(s);
-        return at + strlen(p->data) - 1;
+        return at;
     }
     report_err("type definition error： ", p->data, p->line_num);
     return at;

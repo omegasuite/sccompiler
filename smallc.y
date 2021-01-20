@@ -63,7 +63,7 @@ EXTDEFS
 EXTDEF
 	: XTYPE EXTVARS ';' { $$ = create_node(yylineno, _EXTDEF, "extdef", 1, reorg_var_dec_node($1, $2)); }
 	| STSPEC ';' { $$ = $1; }
-	| IMPORT ID ';' { $$ = create_node(yylineno,_EXTDEF, "import", 1, create_node(yylineno,_ID, $2, 0)); }
+	| IMPORT ID ';' { int lno = yylineno; $$ = create_node(lno,_EXTDEF, "import", 1, create_node(lno,_ID, $2, 0)); }
 	| FUNC STMTBLOCK {
 		TreeNode * t = $1->children[0];
 		if ($1->size == 2) $1->children[0] = $1->children[1];
@@ -76,18 +76,18 @@ XTYPE
 	: TYPE {$$ = create_node(yylineno,_TYPE, $1, 0);}
 	| XTYPE '*' {$$ = create_node(yylineno,_TYPE, "pointer of", 1, $1);}
 	| XTYPE ARRS {$$ = create_node(yylineno,_TYPE, "[]", 2, $1, $2);}
-	| STRUCT ID { $$ = create_node(yylineno,_TYPE, "stspec identifier {}", 2, create_node(yylineno,_OPERATOR,$1,0), create_node(yylineno,_ID, $2, 0)); }
-	| UNION ID { $$ = create_node(yylineno,_TYPE, "stspec identifier {}", 2, create_node(yylineno,_OPERATOR,$1,0), create_node(yylineno,_ID, $2, 0)); }
+	| STRUCT ID { int lno = yylineno; $$ = create_node(lno,_TYPE, "stspec identifier {}", 2, create_node(lno,_OPERATOR,$1,0), create_node(lno,_ID, $2, 0)); }
+	| UNION ID { int lno = yylineno; $$ = create_node(lno,_TYPE, "stspec identifier {}", 2, create_node(lno,_OPERATOR,$1,0), create_node(lno,_ID, $2, 0)); }
 	;
 
 STSPEC
-	: STRUCT ID '{' SDEFS '}' { $$ = create_node(yylineno,_TYPE, "stspec identifier {}", 3, create_node(yylineno,_OPERATOR,$1,0), create_node(yylineno,_ID, $2, 0),$4); }
-	| UNION ID '{' SDEFS '}' { $$ = create_node(yylineno,_TYPE, "stspec identifier {}", 3, create_node(yylineno,_OPERATOR,$1,0), create_node(yylineno,_ID, $2, 0), $4); }
+	: STRUCT ID '{' SDEFS '}' { int lno = yylineno; $$ = create_node(lno,_TYPE, "stspec identifier {}", 3, create_node(lno,_OPERATOR,$1,0), create_node(lno,_ID, $2, 0),$4); }
+	| UNION ID '{' SDEFS '}' { int lno = yylineno; $$ = create_node(lno,_TYPE, "stspec identifier {}", 3, create_node(lno,_OPERATOR,$1,0), create_node(lno,_ID, $2, 0), $4); }
 	;
 
 NMSTSPEC
-	: STRUCT '{' SDEFS '}' { $$ = create_node(yylineno,_TYPE, "stspec {}", 2, create_node(yylineno,_OPERATOR,$1,0), $3); }
-	| UNION '{' SDEFS '}' { $$ = create_node(yylineno,_TYPE, "stspec {}", 2, create_node(yylineno,_OPERATOR,$1,0), $3); }
+	: STRUCT '{' SDEFS '}' { int lno = yylineno; $$ = create_node(lno,_TYPE, "stspec {}", 2, create_node(lno,_OPERATOR,$1,0), $3); }
+	| UNION '{' SDEFS '}' { int lno = yylineno; $$ = create_node(lno,_TYPE, "stspec {}", 2, create_node(lno,_OPERATOR,$1,0), $3); }
 	;
 
 SDEFS
@@ -101,19 +101,19 @@ SDEF
 	;
 
 EXTVARS
-	: ID { $$ = create_node(yylineno,_EXTVARS, "var list", 1, create_node(yylineno,_ID, $1, 0)); }
+	: ID { int lno = yylineno; $$ = create_node(lno,_EXTVARS, "var list", 1, create_node(lno,_ID, $1, 0)); }
 	| EXTVARS ',' ID { $$ = merge_node($1, create_node(yylineno,_ID, $3, 0)); }
 	;
 
 FUNC
-	: XTYPE ID '(' PARAS ')' { $$ = create_node(yylineno,_FUNC, "func ()", 2, create_node(yylineno,_ID, $2, 1, $1), $4); }
-	| XTYPE ID '(' ')' { $$ = create_node(yylineno,_FUNC, "func ()", 1, create_node(yylineno,_ID, $2, 1, $1)); }
-	| PUBLIC XTYPE ID '(' PARAS ')' { $$ = create_node(yylineno,_FUNC, "pub func ()", 2, create_node(yylineno,_ID, $3, 1, $2), $5); }
-	| PUBLIC XTYPE ID '(' ')' { $$ = create_node(yylineno,_FUNC, "pub func ()", 1, create_node(yylineno,_ID, $3, 1, $2)); }
+	: XTYPE ID '(' PARAS ')' { int lno = yylineno; $$ = create_node(lno,_FUNC, "func ()", 2, create_node(lno,_ID, $2, 1, $1), $4); }
+	| XTYPE ID '(' ')' { int lno = yylineno; $$ = create_node(lno,_FUNC, "func ()", 1, create_node(lno,_ID, $2, 1, $1)); }
+	| PUBLIC XTYPE ID '(' PARAS ')' { int lno = yylineno; $$ = create_node(lno,_FUNC, "pub func ()", 2, create_node(lno,_ID, $3, 1, $2), $5); }
+	| PUBLIC XTYPE ID '(' ')' { int lno = yylineno; $$ = create_node(lno,_FUNC, "pub func ()", 1, create_node(lno,_ID, $3, 1, $2)); }
 	;
 
 PARAS
-	: XTYPE ID { $$ = create_node(yylineno,_PARAS, "paras", 1, create_node(yylineno,_ID, $2, 1, $1)); }
+	: XTYPE ID { int lno = yylineno; $$ = create_node(lno,_PARAS, "paras", 1, create_node(lno,_ID, $2, 1, $1)); }
 	| PARAS ',' XTYPE ID { $$ = merge_node($1, create_node(yylineno,_ID, $4, 1, $3)); }
 	;
 
@@ -132,16 +132,16 @@ STMTS
 STMT
 	: ';' { $$ = NULL; }
 	| STMTBLOCK { $$ = $1; }
-	| RETURN EXPS ';' { $$ = create_node(yylineno,_STMT, "return stmt", 2, create_node(yylineno,_KEYWORDS, $1, 0),$2); }
-	| RETURN ';' { $$ = create_node(yylineno,_STMT, "return stmt", 1, create_node(yylineno,_KEYWORDS, $1, 0)); }
+	| RETURN EXPS ';' { int lno = yylineno; $$ = create_node(lno,_STMT, "return stmt", 2, create_node(lno,_KEYWORDS, $1, 0),$2); }
+	| RETURN ';' { int lno = yylineno; $$ = create_node(lno,_STMT, "return stmt", 1, create_node(lno,_KEYWORDS, $1, 0)); }
 	| IF '(' EXPS ')' STMT %prec IFX { $$ = create_node(yylineno,_STMT, "if stmt", 2, $3,$5); }
 	| IF '(' EXPS ')' STMT ELSE STMT %prec ELSE { $$ = create_node(yylineno,_STMT, "if stmt", 3, $3,$5,$7);}
 	| FOR '(' EXPS ')' STMT { $$ = create_node(yylineno,_STMT, "for stmt", 2, $3,$5); }
-	| CONT ';' { $$ = create_node(yylineno,_STMT, "cont stmt", 1, create_node(yylineno,_KEYWORDS, $1, 0)); }
-	| BREAK ';' { $$ = create_node(yylineno,_STMT, "break stmt", 1, create_node(yylineno,_KEYWORDS, $1, 0)); }
+	| CONT ';' { int lno = yylineno; $$ = create_node(lno,_STMT, "cont stmt", 1, create_node(lno,_KEYWORDS, $1, 0)); }
+	| BREAK ';' { int lno = yylineno; $$ = create_node(lno,_STMT, "break stmt", 1, create_node(lno,_KEYWORDS, $1, 0)); }
 	| left_exp '=' INIT ';' { $$ = create_node(yylineno,_STMT, "=", 2, $1,$3); }
 	| left_exp assignment_operator EXPS ';' { $$ = create_node(yylineno,_STMT, $2->data, 2, $1,$3); }
-	| ASM { $$ = create_node(yylineno,_STMT, "stmt: asm;", 1, create_node(yylineno,_KEYWORDS, $1, 0)); }
+	| ASM { int lno = yylineno; $$ = create_node(lno,_STMT, "stmt: asm;", 1, create_node(lno,_KEYWORDS, $1, 0)); }
 	| EXPS ';' { $$ = create_node(yylineno,_STMT, "exps stmt", 1, $1); }
 	;
 
@@ -160,12 +160,12 @@ INITLIST
 left_exp
 	: ID { $$ = create_node(yylineno,_ID, $1, 0); }
 	| left_exp ARRS { $$ = create_node(yylineno,_EXPS, "exps arr", 2, $1, $2); }
-	| left_exp '.' ID { $$ = create_node(yylineno,_EXPS, "exps struct", 2, $1, create_node(yylineno,_ID, $3, 0)); }
-	| left_exp PTR_OP ID { $$ = create_node(yylineno,_EXPS, "exps struct ptr", 2, $1, create_node(yylineno,_ID, $3, 0)); }
+	| left_exp '.' ID { int lno = yylineno; $$ = create_node(lno,_EXPS, "exps struct", 2, $1, create_node(lno,_ID, $3, 0)); }
+	| left_exp PTR_OP ID { int lno = yylineno; $$ = create_node(lno,_EXPS, "exps struct ptr", 2, $1, create_node(lno,_ID, $3, 0)); }
 	| '*' left_exp { $$ = create_node(yylineno,_EXPS, "deference", 1, $2); }
 	| '(' EXPS ')' ARRS { $$ = create_node(yylineno,_EXPS, "exps arr", 2, $2, $4); }
-	| '(' EXPS ')' '.' ID { $$ = create_node(yylineno,_EXPS, "exps struct", 2, $2, create_node(yylineno,_ID, $5, 0)); }
-	| '(' EXPS ')' PTR_OP ID { $$ = create_node(yylineno,_EXPS, "exps struct ptr", 2, $2, create_node(yylineno,_ID, $5, 0)); }
+	| '(' EXPS ')' '.' ID { int lno = yylineno; $$ = create_node(lno,_EXPS, "exps struct", 2, $2, create_node(lno,_ID, $5, 0)); }
+	| '(' EXPS ')' PTR_OP ID { int lno = yylineno; $$ = create_node(lno,_EXPS, "exps struct ptr", 2, $2, create_node(lno,_ID, $5, 0)); }
 	| '*' '(' EXPS ')' { $$ = create_node(yylineno,_EXPS, "deference", 1, $3); }
 	;
 
@@ -184,7 +184,7 @@ assignment_operator
 	;
 
 DEFS
-	: XTYPE EXTVARS ';' { $$ = create_node(yylineno,_DEFS, "defs", 1, create_node(yylineno,_EXTDEF, "extdef", 1, reorg_var_dec_node($1, $2))); }
+	: XTYPE EXTVARS ';' { int lno = yylineno; $$ = create_node(lno,_DEFS, "defs", 1, create_node(lno,_EXTDEF, "extdef", 1, reorg_var_dec_node($1, $2))); }
 	| STSPEC ';' { $$ = create_node(yylineno,_DEFS, "defs", 1, $1); }
 	| DEFS STSPEC ';' { $$ = merge_node($1, $2); }
 	| DEFS XTYPE EXTVARS ';' {$$ = merge_node($1, create_node(yylineno,_EXTDEF, "extdef", 1, reorg_var_dec_node($2, $3)));}
@@ -203,8 +203,8 @@ primary_expression
 postfix_expression
 	: primary_expression {$$=$1;}
 	| postfix_expression ARRS { $$ = create_node(yylineno,_EXPS, "exps arr", 2, $1, $2); }
-	| postfix_expression '.' ID { $$ = create_node(yylineno,_EXPS, "exps struct", 2, $1, create_node(yylineno,_ID, $3, 0)); }
-	| postfix_expression PTR_OP ID { $$ = create_node(yylineno,_EXPS, "exps struct ptr", 2, $1, create_node(yylineno,_ID, $3, 0)); }
+	| postfix_expression '.' ID { int lno = yylineno; $$ = create_node(lno,_EXPS, "exps struct", 2, $1, create_node(lno,_ID, $3, 0)); }
+	| postfix_expression PTR_OP ID { int lno = yylineno; $$ = create_node(lno,_EXPS, "exps struct ptr", 2, $1, create_node(lno,_ID, $3, 0)); }
 	;
 
 const
@@ -231,17 +231,16 @@ unary_operator
 
 func_expression
 	: unary_expression {$$=$1;}
-	| ID '(' ARGS ')' { $$ = create_node(yylineno,_EXPS, "exps f()", 2, create_node(yylineno,_ID, $1, 0),$3); }
-	| ID '(' ')' { $$ = create_node(yylineno,_EXPS, "exps f()", 1, create_node(yylineno,_ID, $1, 0)); }
-	| ID LIBMARK ID '(' ARGS ')' { $$ = create_node(yylineno,_EXPS, "lib call ()", 3, create_node(yylineno,_ID, $1, 0), create_node(yylineno,_ID, $3, 0),$5); }
-	| ID LIBMARK ID '(' ')' { $$ = create_node(yylineno,_EXPS, "lib call ()", 2, create_node(yylineno,_ID, $1, 0), create_node(yylineno,_ID, $3, 0)); }
-	| ID ':' ID '(' ARGS ')' { $$ = create_node(yylineno,_EXPS, "execute ()", 3, create_node(yylineno,_ID, $1, 0), create_node(yylineno,_ID, $3, 0),$5); }
-	| ID ':' ID '(' ')' { $$ = create_node(yylineno,_EXPS, "execute ()", 2, create_node(yylineno,_ID, $1, 0), create_node(yylineno,_ID, $3, 0)); }	;
+	| ID '(' ARGS ')' { int lno = yylineno; $$ = create_node(lno,_EXPS, "exps f()", 2, create_node(lno,_ID, $1, 0),$3); }
+	| ID '(' ')' { int lno = yylineno; $$ = create_node(lno,_EXPS, "exps f()", 1, create_node(lno,_ID, $1, 0)); }
+	| ID LIBMARK ID '(' ARGS ')' { int lno = yylineno; $$ = create_node(lno,_EXPS, "lib call ()", 3, create_node(lno,_ID, $1, 0), create_node(lno,_ID, $3, 0),$5); }
+	| ID LIBMARK ID '(' ')' { int lno = yylineno; $$ = create_node(lno,_EXPS, "lib call ()", 2, create_node(lno,_ID, $1, 0), create_node(lno,_ID, $3, 0)); }
+	;
 
 cast_expression
 	: func_expression {$$=$1;}
-	| '(' TYPE ')' cast_expression { $$ = create_node(yylineno,_EXPS, "cast exp", 2, create_node(yylineno,_TYPE, $2, 0), $4); }
-	| '(' XTYPE '*' ')' cast_expression { $$ = create_node(yylineno,_EXPS, "cast * exp", 2, create_node(yylineno,_TYPE, "pointer of", 1, $2), $5); }
+	| '(' TYPE ')' cast_expression { int lno = yylineno; $$ = create_node(lno,_EXPS, "cast exp", 2, create_node(lno,_TYPE, $2, 0), $4); }
+	| '(' XTYPE '*' ')' cast_expression { int lno = yylineno; $$ = create_node(lno,_EXPS, "cast * exp", 2, create_node(lno,_TYPE, "pointer of", 1, $2), $5); }
 	;
 
 power_expression
@@ -338,43 +337,58 @@ int clp = 0;
 
 void genabi(FILE * fp);
 
+vector <char*> allines;
+
+int skiplines = 0;
+
 void scanner(const char * s) {
 	char c;
 	while (c = *s++) {
 		if (c == '\n' || clp == 4096) {
+    		allines.push_back(strdup(scanned));
 			clp = 0;
 		}
 		else scanned[clp++] = c;
 	}
 	scanned[clp] = '\0';
-//			fprintf(stderr,"%s\n",scanned);
 }
 
 void yyerror(const char *s) {
 	fflush(stdout);
-	fprintf(stderr,"%s\n%d :%s %s\n",scanned,yylineno,s,yytext);
+	if (yylineno > skiplines)
+    	fprintf(stderr,"%d: %s\n", yylineno - skiplines - 1, allines[yylineno - 1]);
+	fprintf(stderr,"%d: %s\n", yylineno - skiplines, allines[yylineno]);
+	fprintf(stderr,"%d: %s\n", yylineno - skiplines + 1, scanned);
+	fprintf(stderr,"%s. error near %s\n",s, scanned);
 }
 
 int main(int argc, char *argv[]) {
 	pid_t pid = 0;
 	int pipefd[2];
 	char c_buf[10], buf[4096];
+
+	allines.push_back((char*) "");
 	
 //	yydebug = 1;
 
 	pipefd[1] = creat("__tmp", 0777);
 	
-//	pipe(pipefd);
-//	pid = fork();
+		FILE * fp;
 
-//	if(pid < 0) {
-/*
-		if (argc < 2) {
-			cout << "Missing name of the file to be compiled";
+		fp = fopen("buildin.c", "r");
+		if (!fp) {
+			cout << "Missing buildin.c";
 			exit(1);
 		}
-*/
-		FILE * fp;
+
+		while (!feof(fp)) {
+			int n = fread(buf, 1, 1024, fp);
+			int i;
+			for (i = 0; i < n; i++)
+			    if (buf[i] == '\n') skiplines++;
+			write(pipefd[1], buf, n);
+		}
+		fclose(fp);
 
 		for (int i = 1; i < argc; i++) {
 			fp = fopen(argv[i], "r");
@@ -389,18 +403,6 @@ int main(int argc, char *argv[]) {
 			}
 			fclose(fp);
 		}
-
-		fp = fopen("buildin.c", "r");
-		if (!fp) {
-			cout << "Missing buildin.c";
-			exit(1);
-		}
-
-		while (!feof(fp)) {
-			int n = fread(buf, 1, 1024, fp);
-			write(pipefd[1], buf, n);
-		}
-		fclose(fp);
 
 		close(pipefd[1]);
 //	}
@@ -424,14 +426,22 @@ int main(int argc, char *argv[]) {
 
 			flattern(progroot);
 			
-			print_ast(progroot, 0);
+//			print_ast(progroot, 0);
 
+			char tp[255];
+			char compiled[255];
+			char * p;
+
+			strcpy(tp, argv[1]);
+			for (p = tp + strlen(tp) - 1; p != tp && *p != '.'; p--);
+			if (*p == '.') *p = '\0';
+
+			sprintf(compiled, "%s.asm", tp);
+			freopen(compiled, "w", stdout);
 			phase3_translate();
 			fprintf(stderr,"Translate complete.\n");
 
-			char compiled[255];
-			
-			sprintf(compiled, "%s.abi", argv[1]);
+			sprintf(compiled, "%s.abi", tp);
 			FILE * fp = fopen(compiled, "w");
 			// write abi data
 			genabi(fp);

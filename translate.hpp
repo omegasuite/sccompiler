@@ -39,7 +39,7 @@ int consteval(TreeNode * p) {
     return 0;
 }
 
-int abi(char* p) {
+unsigned int abi(char* p) {
     MD5_CTX      tctx;
     unsigned char tk[16];
 
@@ -47,7 +47,7 @@ int abi(char* p) {
     MD5Update(&tctx,(unsigned char*) p, strlen(p));
     MD5Final(tk, &tctx);
 
-    return *((int*)tk);
+    return *((unsigned int*)tk);
 }
 
 bool isvoid(TreeNode *p);
@@ -62,8 +62,9 @@ map<string, string> operatorMapping = { {"<<", "["}, {">>", "]"}, {"<=", "("},
       {"|", "|"},{"&", "&"}, {"^", "^"}, {"#", "#"},{"<", "<"},{">", ">"} };
 
 char tohex[16] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'};
-const char * allops[] = {"*", "/", "%", "+", "-", "|", "&", "^", "#", "<<", ">>", "<=", ">=", ">",
-                         "<", "==", "!=", "||", "&&", NULL};
+const char * allops[] = {"*", "/", "%", "+", "-", "|", "&", "^", "#", "<<", ">>", ">", "<=", ">=",
+                         "<", "==", "!=", "||", "&&", NULL};       // binary AL ops
+const char * logicops[] = {"||", "&&", NULL};       // binary logical ops
 
 string upgrade[] = {"", "B", "W", "", "D", "", "", "", "Q"};
 
@@ -75,6 +76,7 @@ string funcode = "";
 
 TreeNode * intnode = NULL;
 TreeNode * ptrnode = NULL;
+TreeNode * voidtype = NULL;
 
 int label = time(NULL);
 vector <int> continues;
@@ -91,6 +93,7 @@ int yyparse ();
 struct expression {
     short type;	// 8 16 32 64 256
     bool usign;
+    bool takeaddr;
     string invpoland;
 };
 
@@ -98,7 +101,7 @@ map <char *, library, ptr_cmp> libs;
 
 const char *structdata[] = {"stspec identifier {}", "stspec {}", "union identifier {}", "union {}"};
 
-int getsize(TreeNode *p);
+int getsize(TreeNode *p, bool);
 TreeNode * matchID(char * id);
 TreeNode * matchFuc(char * id);
 bool checkType(TreeNode *p);
@@ -153,13 +156,15 @@ TreeNode * structaddr(TreeNode * p, const char *name, string *begin, int * reg) 
     if (p->type == _EXPS && !strncmp(p->data, "exps struct", 11)) {
         p->children[0]->leftval = p->leftval;
         p = structaddr(p->children[0], p->children[1]->data, begin, reg);
+//        p->leftval = p->children[0]->leftval;
 //    } else if (p->type == _EXPS && !strcmp(p->data, "exps struct ptr")) {
 //        p = structaddr(p->children[0], p->children[1]->data, begin, reg);
     }
 
     if (p->type == _ID) {
         auto f = matchID(p->data);
-        if (f == NULL) report_err("var undefined： ", p->data, p->line_num);
+        if (f == NULL)
+            report_err("var undefined: ", p->data, p->line_num);
 
         p = f->children[0];
         *begin = *begin + f->address + ",";
@@ -188,7 +193,7 @@ TreeNode * structaddr(TreeNode * p, const char *name, string *begin, int * reg) 
         int t = * reg;
 
         * reg += 8;
-        tmp.type = 64; tmp.invpoland = "";
+        tmp.type = 64; tmp.invpoland = ""; tmp.takeaddr = false;
         p->leftval = true;
         translate_exps(p, reg, &tmp);
         funcode += string("EVAL64 ii0'") + to_string(t) + "," + tmp.invpoland + "\n";
@@ -206,7 +211,10 @@ TreeNode * structaddr(TreeNode * p, const char *name, string *begin, int * reg) 
 
     for (int i = 0; i < p->children[p->size - 1]->size; i++) {
         if (!strcmp(p->children[p->size - 1]->children[i]->data, name)) {
-            return p->children[p->size - 1]->children[i]->children[0];
+            auto q = p->children[p->size - 1]->children[i]->children[0];
+            if (q->type == _TYPE && !strcmp(q->data, "[]"))
+                q->leftval = true;
+            return q;
         }
         if (un) continue;
 
@@ -214,7 +222,7 @@ TreeNode * structaddr(TreeNode * p, const char *name, string *begin, int * reg) 
         if (!strcmp(q->data, "stspec identifier {}") && q->size == 2) {
             q = matchType(q->children[1]->data);
         }
-        *begin += to_string(getsize(q)) + ",+";
+        *begin += to_string(getsize(q, true)) + ",+";
     }
 
     return NULL;
@@ -262,6 +270,7 @@ TreeNode * getType(TreeNode *p) {
     if (intnode == NULL) {
         intnode = create_node(0, _TYPE, (char *) "999", 0);
         ptrnode = create_node(0, _TYPE, "pointer of", 1, create_node(0, _TYPE, "char", 0));
+        voidtype = create_node(0, _TYPE, (char *) "void", 0);
     }
 
     if (p->type == _INT || p->type == _NIL) return p;
@@ -276,7 +285,7 @@ TreeNode * getType(TreeNode *p) {
         if (p->size > 0) return p->children[0];
         auto f = matchID(p->data);
         if (f == NULL)
-            report_err("var undefined： ", p->data, p->line_num);
+            report_err("var undefined: ", p->data, p->line_num);
 
         p = f->children[0];
         if (!strcmp(p->data, "stspec identifier {}") && p->size == 2) {
@@ -288,14 +297,17 @@ TreeNode * getType(TreeNode *p) {
     if (p->type == _EXPS) {
         if (in_array(p->data, allops)) {
             TreeNode * s = getType(p->children[0]);
+
+            if (in_array(p->data, logicops))  return s;
+
             TreeNode * t = getType(p->children[1]);
             if (!matchingTypes(s, t)) {
                 if (!strcmp(s->data, "pointer of") && (p->data[0] == '+' || p->data[0] == '-') &&
                         isinttype(t))
                     return s;
-                report_err("operand type mismatch error： ", p->data, p->line_num);
+                report_err("operand type mismatch error: ", p->data, p->line_num);
             }
-            return s;
+            return s->type == _TYPE?s : t;
         } else if (!strcmp("?",p->data)) {
             TreeNode * s = getType(p->children[0]);
             TreeNode * t = getType(p->children[1]);
@@ -304,8 +316,8 @@ TreeNode * getType(TreeNode *p) {
 
             s = getType(p->children[2]);
             if (!matchingTypes(s, t))
-                report_err("operand type mismatch error： ", p->data, p->line_num);
-            return s;
+                report_err("operand type mismatch error: ", p->data, p->line_num);
+            return s->type == _TYPE?s : t;
         } else if (!strcmp("exps unary",p->data)) {
             TreeNode * q = getType(p->children[1]);
             if (!strcmp(p->children[0]->data, "&")) return create_node(-1, _TYPE, "pointer of", 1, q);
@@ -315,6 +327,12 @@ TreeNode * getType(TreeNode *p) {
         else if (!strcmp("exps ()",p->data)) return getType(p->children[0]);
         else if (!strcmp("exps f()",p->data)) {
             TreeNode * f = matchID(p->children[0]->data);
+            if (f == NULL) {
+                if (in_array(p->children[0]->data, buildins)) {
+                    return voidtype;
+                }
+                report_err("find no ID matching", p->children[0]->data, p->line_num);
+            }
             return getType(f->children[0]);
         } else if (!strcmp("lib call ()",p->data)) {
             TreeNode * f = findlibfunc(p->children[0]->data, p->children[1]->data);
@@ -325,6 +343,8 @@ TreeNode * getType(TreeNode *p) {
         } else if (!strcmp("exps arr",p->data)) {
             TreeNode * f = getType(p->children[0]);
             // check dimention of base & this, if same then size of base, else 8
+            if (f->size < 2)
+                report_err("Array expected: ", p->data, p->line_num);
             if (p->children[1]->size == f->children[1]->size)
                 return getType(f->children[0]);
             if (p->children[1]->size > f->children[1]->size)
@@ -332,7 +352,14 @@ TreeNode * getType(TreeNode *p) {
             return create_node(0, _TYPE, (char *) "[]", 2, f->children[0],
                  arrTail(f->children[1], f->children[1]->size - p->children[1]->size));
         } else if (!strcmp("exps struct",p->data)) { //dot op
-            return structMemType(p->children[1]->data, p->children[0], false);
+           auto s = structMemType(p->children[1]->data, p->children[0], false);
+           if (!strcmp("[]", s->data)) {
+               TreeNode * t = new TreeNode;
+               *t = *s;
+               t->data = (char *) "pointer of";
+               return t;
+           }
+           return s;
         } else if (!strcmp("exps struct ptr",p->data)) { //dot op
             return structMemType(p->children[1]->data, p->children[0], true);
         } else if (!strcmp(p->data, "cast exp")) return p->children[0];
@@ -343,7 +370,7 @@ TreeNode * getType(TreeNode *p) {
         }
     }
 
-    report_err("Unknown type： ", p->children[1]->data, p->line_num);
+    report_err("Unknown type: ", p->children[1]->data, p->line_num);
     return NULL;
 }
 
@@ -352,7 +379,7 @@ TreeNode * structMemType(const char * name, TreeNode * q, bool ptr) {
     if (p->type == _EXPS || p->type == _ID) p = getType(p);
 
     if (ptr) {
-        assert(p->type == _TYPE && !strncmp(p->data, "pointer of", 6));
+        assert(p->type == _TYPE && !strcmp(p->data, "pointer of"));
         p = p->children[0];
 
         if (!strcmp(p->data, "stspec identifier {}") && p->size == 2) {
@@ -376,10 +403,10 @@ TreeNode * structMemType(const char * name, TreeNode * q, bool ptr) {
     return NULL;
 }
 
-int getsize(TreeNode *p) {
+int getsize(TreeNode *p, bool fullArray) {
     if (p->type == _SDEF || p->type == _EXTVARS) {
         int s = 0;
-        for (int i = 0; i < p->size; i++) s += getsize(p->children[i]);
+        for (int i = 0; i < p->size; i++) s += getsize(p->children[i], fullArray);
         return s;
     }
 
@@ -391,7 +418,7 @@ int getsize(TreeNode *p) {
     }
 
     if (p->type != _TYPE && p->type != _INT) {
-        return getsize(getType(p));
+        return getsize(getType(p), fullArray);
     }
 
     if (!strcmp(p->data, "pointer of")) return 8;
@@ -406,9 +433,9 @@ int getsize(TreeNode *p) {
         int s = 0;
         int m = 0;
         if (p->size == 2)
-            return getsize(matchType(p->children[1]->data));
+            return getsize(matchType(p->children[1]->data), fullArray);
         for (int i = 0; i < p->children[2]->size; i++) {
-            int t = getsize(p->children[2]->children[i]);
+            int t = getsize(p->children[2]->children[i], fullArray);
             s += t;
             if (t > m) m = t;
         }
@@ -420,7 +447,7 @@ int getsize(TreeNode *p) {
         int m = 0;
 
         for (int i = 0; i < p->children[1]->size; i++) {
-            int t = getsize(p->children[1]->children[i]);
+            int t = getsize(p->children[1]->children[i], fullArray);
             s += t;
             if (t > m) m = t;
         }
@@ -429,14 +456,16 @@ int getsize(TreeNode *p) {
     }
 
     if (!strcmp(p->data, "[]")) {
-        int s = getsize(p->children[0]);
+        if (!fullArray) return 8;
+
+        int s = getsize(p->children[0], fullArray);
         TreeNode * r = p->children[1];
         for (int i = 0; i < r->size; i++)
             s *= consteval(r->children[i]);
         return s;
     }
 
-    report_err("type definition error： ", p->data, p->line_num);
+    report_err("type definition error: ", p->data, p->line_num);
 
     return -1;
 }
@@ -485,6 +514,22 @@ int assignvarspace(TreeNode *p, TreeNode *q, int space, bool global) {
     return sbspace;
 }
 
+void assignabimacro(TreeNode *p) {
+    if (p->type == _EXPS && !strcmp(p->data, "exps f()") && p->size == 2 &&
+          p->children[0]->type == _ID && !stricmp(p->children[0]->data, "abi")) {
+        char *s = (char*) malloc(10);
+        sprintf(s, "0x%x", abi(p->children[1]->children[0]->data));
+
+        p->type = _INT;
+        p->size = 0;
+        p->children = NULL;
+        p->data = s;
+    }
+
+    for (int i = 0; i < p->size; i++)
+        assignabimacro(p->children[i]);
+}
+
 void assignfuncabi() {
     map<int, bool> assigned = {{1, true}};
 
@@ -499,13 +544,19 @@ void assignfuncabi() {
             }
         }
     }
+    assignabimacro(progroot);
 }
 
 int translate_stmt(TreeNode *p, TreeNode *q);
 
 bool isvoid(TreeNode *p) {
-    return p->type == _ID && strcmp(p->children[0]->data, "void") == 0;
+    while (p) {
+        if (p->type == _TYPE) return strcmp(p->data, "void") == 0;
+        p = p->children[0];
+    }
+    return false;
 }
+
 bool isstruct(TreeNode *p) {
     return p->type == _TYPE && in_array(p->data, structdata);
 }
@@ -518,6 +569,7 @@ bool isunsigned(TreeNode *p) {
 void setfuncspace(TreeNode* q);
 
 void imports(TreeNode* root) {
+    // the execute protocol
     for (int i = 0; i < root->size; i++) {
         TreeNode * p = root->children[i];
         if (strcmp("import", p->data)) continue;
@@ -533,7 +585,7 @@ void imports(TreeNode* root) {
         if (fp == NULL) {
             strcpy(fname, p->children[0]->data);
             strcat(fname, ".abi: ");
-            report_err("Unable to open import file： ", fname, p->line_num);
+            report_err("Unable to open import file: ", fname, p->line_num);
         }
 
         fd = fileno(fp);
@@ -557,14 +609,14 @@ void imports(TreeNode* root) {
             char tmp[255];
             strcpy(tmp, "Unable to parse import file ");
             strcat(tmp, p->children[0]->data);
-            strcat(tmp, ".abi： ");
+            strcat(tmp, ".abi: ");
             report_err(tmp, p->data, p->line_num);
         }
 
         library lib;
 
         auto tt = cJSON_GetObjectItem(cj, "address");
-        lib.address = (char *) malloc(sizeof(tt->valuestring) + 1);
+        lib.address = (char *) malloc(strlen(tt->valuestring) + 1);
         strcpy(lib.address, tt->valuestring);
 
         if (lib.address == NULL) {
@@ -585,8 +637,10 @@ void imports(TreeNode* root) {
             interface[el->string] = el->valuestring;
         }
 
+        interface[(char*) "void * execute(char pure, struct __coin__ * coin, char * funcName, int len, char * param)"] = "";
+
         for (auto it : interface) {
-            pipefd[1] = open("____tmp", O_WRONLY | O_CREAT, 0777);
+            pipefd[1] = open("____tmp", O_WRONLY | O_CREAT | O_TRUNC, 0777);
 
 //			pipe(pipefd);
 
@@ -631,14 +685,14 @@ void phase3_translate() {
     setnamespace(progroot);
     imports(progroot);      // must after setnamespace
     setfuncspace(progroot);
-    progroot->staticspace = assignvarspace(progroot, progroot, 8, true);
+    progroot->staticspace = assignvarspace(progroot, progroot, 40, true);
     // assign space for vars at this level. incl those in stmt block
 
     assignfuncabi();	// assign func abis
 
     if (mainnode && mainnode->size > 2) {	// gen main code first
         // only "void main()" allowed
-        if (mainnode->children[1]->size > 1 || !isvoid(mainnode->children[0])) {
+        if (mainnode->children[1]->size > 1 || !isvoid(mainnode)) {
             report_err("only void constructor() allowed：", "", mainnode->line_num);
         }
 
@@ -659,23 +713,44 @@ void phase3_translate() {
             if (strcmp(q->data, "pub func ()")) continue;
             q = q->children[0];
             if (strcmp(q->data, "_")) {
-                cout << "EVAL32 ii0'8," << p->abi << ",i8,!\n";
-                cout << "IF ii0'8,4,\n";
+                char hex[20];
+                cout << "EVAL32 gii0'8,";
+                sprintf(hex, "x%x", p->abi);
+                cout << hex << ",gi8,!\n";
+                cout << "IF gii0'8,4,\n";
                 // call. matching params, since each param is 8 bytes, we don't
                 // need to examine their types. only numbers.
-                cout << "CALL 0,." <<  q->data << ",";
-                for (int i = 0; i < p->children[2]->size; i++) {
-                    cout << "i" << ((i<<3) + 12) << ",";
+                int nparam = 0;
+                if (p->children[1]->size > 0)
+                    nparam = p->children[1]->children[0]->size;
+
+                // if the contract is to return something, the first parameter
+                // should be address for return data. if it is from a tx, this
+                // this should be 0 indicating data is at the beginning of global
+                // frame. if it is called internally or as a lib, the caller should
+                // set it to an address of his choice
+
+//                TreeNode * fid = p->children[0];
+                if (!isvoid(p)) {
+                    nparam++;
                 }
+
+                cout << "CALL 0,." << p->children[0]->data << ",";
+                for (int i = 0; i < nparam; i++) {
+                    cout << "gi" << ((i<<3) + 12) << ",";
+                }
+                // we put a return here, so if it is a lib call, the stack depth would
+                // be more than 1, and return is executed. if it is a tx call, the
+                // stack depth would be 1 and return ignored, then stop executed.
                 cout << "\nRETURN\nSTOP\n";
             } else fallthroughnode = p;
         }
     }
 
     if (fallthroughnode) {
-        cout << "CALL 0,." <<  fallthroughnode->data << ",";
+        cout << "CALL 0,." <<  fallthroughnode->children[0]->data << ",";
         for (int i = 0; i < fallthroughnode->children[2]->size; i++) {
-            cout << "i" << ((i<<3) + 12) << ",";
+            cout << "gi" << ((i<<3) + 12) << ",";
         }
         cout << "\nRETURN\nSTOP\n";
     }
@@ -700,7 +775,7 @@ void setparamaddr(TreeNode * p) {
 
     int s = 8;
 
-    if (!isvoid(p->children[0])) {
+    if (!isvoid(p)) {
         if (r->address == NULL) {
             r->address = (char *) "ii8";
         }
@@ -714,7 +789,7 @@ void setparamaddr(TreeNode * p) {
             r = p->children[i];
             if (r->address == NULL) {
                 r->address = (char *) malloc(16);
-                sprintf(r->address, "ii%d", s);
+                sprintf(r->address, "i%d", s);
             }
             s += 8;
         }
@@ -761,7 +836,7 @@ void translate_extdeffunc(TreeNode *p, int space, bool global) {
 }
 
 int basictype(TreeNode *p) {
-    int s = getsize(p);
+    int s = getsize(p, false);
     if (s > 8) s = 0;
     return s;
 }
@@ -772,7 +847,8 @@ string translate_addr_exps(TreeNode *p, int *reg, expression *res) {
 
     * reg += 8;
 
-    tmp.type = 64; tmp.invpoland = string("EVAL64 ii0'") + to_string(t) + ",";
+    tmp.type = 64; tmp.takeaddr = false;
+    tmp.invpoland = string("EVAL64 ii0'") + to_string(t) + ",";
 
     bool left = p->leftval;
     p->leftval = true;
@@ -797,8 +873,6 @@ map < const char*, char, ptr_cmp > assignovmop = {
 };
 
 int translate_stmt(TreeNode * pfunc, TreeNode *p) {
-    currentline = p->line;
-
     if (p->type == _DEFS) return 0;
     if (p->type == _STMTBLOCK) {
         if (p->size == 0) return 0;
@@ -837,10 +911,13 @@ int translate_stmt(TreeNode * pfunc, TreeNode *p) {
     if (!strcmp(p->data,"stmt: asm;")) {
         funcode += p->children[0]->data;
     } else if (!strcmp("return stmt",p->data)) {
-        if (isvoid(pfunc->children[0]) || p->size == 1) {
+        if (isvoid(pfunc) || p->size == 1) {
             funcode += "RETURN\n";
             return reg - pfunc->staticspace;
         }
+
+        int tlabel = label++;
+        funcode += string("EVAL64 ii0'8,ii8,0,=\nIF ii0'8,.__label") + to_string(tlabel) + ",\n";
 
         exptype(pfunc->children[0], &exp);
         translate_exps(p->children[1], &reg, &exp);
@@ -848,11 +925,12 @@ int translate_stmt(TreeNode * pfunc, TreeNode *p) {
         if (exp.type > 0)
             funcode += string("EVAL") + to_string(exp.type) + " ii8," + exp.invpoland + "\n";
         else if (exp.type == -1) // single id
-            funcode += string("COPY ii8,") + exp.invpoland + to_string(getsize(pfunc->children[0])) + ",\n";
+            funcode += string("COPY ii8,") + exp.invpoland + to_string(getsize(pfunc->children[0], true)) + ",\n";
         else {
             funcode += string("EVAL64 ii0'") + to_string(reg) + "," + exp.invpoland + "\n";
-            funcode += string("COPY ii8,iii0'") + to_string(reg) + "," + to_string(getsize(pfunc->children[0])) + ",\n";
+            funcode += string("COPY ii8,iii0'") + to_string(reg) + "," + to_string(getsize(pfunc->children[0], true)) + ",\n";
         }
+        funcode += string("define __label") + to_string(tlabel) + " .\n";
         funcode += "RETURN\n";
     } else if (!strcmp("stmt: exp;",p->data)) {
         if (p->type == _NULL) return reg - pfunc->staticspace;
@@ -891,7 +969,7 @@ int translate_stmt(TreeNode * pfunc, TreeNode *p) {
         funcode += string("EVAL") + to_string(exp.type) + " ii0'8," + exp.invpoland + "\n";
 
         continues.push_back(tlabel);
-        breaks.push_back(tlabel);
+        breaks.push_back(elabel);
 
         funcode += "IF ii0'8,2,\n";
         funcode += string("IF 1,.__label") + to_string(elabel) + ",\n";
@@ -954,7 +1032,7 @@ int translate_stmt(TreeNode * pfunc, TreeNode *p) {
                 cpsrc = "iii0'" + to_string(t) + ",";
             }
 
-            funcode += string("COPY ") + cpdest + cpsrc + to_string(getsize(p->children[0])) + ",\n";
+            funcode += string("COPY ") + cpdest + cpsrc + to_string(getsize(p->children[0], true)) + ",\n";
         } else {
             exptype(p->children[0], &exp);
             exptype(p->children[1], &exp);
@@ -982,7 +1060,7 @@ int translate_stmt(TreeNode * pfunc, TreeNode *p) {
                 if (!isinttype(s))
                     report_err("Pointer op type mismatch: ", s->data, p->line_num);
             } else report_err("Pointer op not allowed: ", p->data, p->line_num);
-            exp.invpoland += to_string(getsize(t->children[0])) + ",*";
+            exp.invpoland += to_string(getsize(t->children[0], true)) + ",*";
         }
 
         auto aop = assignovmop.find(p->data);
@@ -992,6 +1070,7 @@ int translate_stmt(TreeNode * pfunc, TreeNode *p) {
     } else if (!strcmp("exps stmt",p->data)) {
         exptype(p->children[0], &exp);
         translate_exps(p->children[0], &reg, &exp);
+        funcode += exp.invpoland + "\n";
 //        if (exp.type) funcode += string("EVAL") + to_string(exp.type) + " ii0'8," + exp.invpoland + "\n";
     }
 
@@ -1029,7 +1108,7 @@ void translate_init(TreeNode *r, TreeNode *q, string assignee, int offset, int *
             sz += string("[") + p->children[1]->children[i]->data + "]";
         }
         if (q->size != n) report_err("Mismatch array size: ", sz.data(), p->line_num);
-        int bsz = getsize(p->children[0]);
+        int bsz = getsize(p->children[0], true);
         for (int i = 0; i < n; i++) {
             translate_init(p->children[0], q->children[i], assignee, offset, reg, res);
             offset += bsz;
@@ -1041,15 +1120,15 @@ void translate_init(TreeNode *r, TreeNode *q, string assignee, int offset, int *
         lst = p->size - 1;
         for (int i = 0; i < p->children[lst]->size; i++) {
             translate_init(p->children[lst]->children[i], q->children[i], assignee, offset, reg, res);
-            offset += getsize(p->children[lst]->children[i]);
+            offset += getsize(p->children[lst]->children[i], true);
         }
     } else if (!strcmp(p->data, "pointer of")) {
-        res->type = 0;
+        res->type = 0; res->takeaddr = false;
         res->invpoland += string("EVAL64 ") + assignee + "\"" + to_string(offset) + ",";
         exptype(p, res);
         translate_exps(q, reg, res);
     } else if (issimple(p)) {
-        res->type = 0;
+        res->type = 0;  res->takeaddr = false;
         exptype(p, res);
 
         res->invpoland += string("EVAL") + to_string(res->type) + " "
@@ -1061,11 +1140,20 @@ void translate_init(TreeNode *r, TreeNode *q, string assignee, int offset, int *
     } else report_err("Unknown type: ", p->data, p->line_num);
 }
 
+//const char *buildins[] = {"write", "addDefinition", "mint", "addTxin", "addTxout", "suicide",
+//		"output", "libload", "hash", "hash160", "exit", "fail", "sigverify", "memcopy"};
+
+typedef void (*internalFcn) (TreeNode *, int *, expression *);
+
+string oneexps(string s, int v, int *reg);
+
 void translate_exps(TreeNode *p, int * reg, expression *res) {
     if (p->type == _INT || p->type == _NIL) {
         if (p->data[0] == '0' && (p->data[1] == 'x' || p->data[1] == 'X')) {
             p->data++;
             p->data[0] = 'x';
+        } else if (p->data[0] == '-'){
+            p->data[0] = 'n';
         }
         res->invpoland += string(p->data) + ",";
     } else if (p->type == _ID) {
@@ -1076,38 +1164,63 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
             report_err("Var undefined： ", p->data, p->line_num);
 
         int bs = basictype(q->children[0]);
-        if (res->type != (bs << 3)) res->invpoland += upgrade[bs];
-
         if (p->leftval) res->invpoland += "@";
+        else if (res->type != 0 && res->type != (bs << 3) && !res->takeaddr)
+            res->invpoland += upgrade[bs];
+
         res->invpoland += string(q->address) + ",";
     } else if (p->type == _STRING) {
         res->invpoland += string(p->address) + ",";
     } else if (in_array(p->data, allops)) {
+        bool normal = true;
         exptype(p->children[0], res);
-        if (res->type != 64) exptype(p->children[1], res);
-
-        translate_exps(p->children[0], reg, res);
-        translate_exps(p->children[1], reg, res);
-
-        TreeNode * t = getType(p->children[0]);
-        if (!strcmp(t->data, "pointer of")) {
-            TreeNode * s = getType(p->children[1]);
-            if (p->data[0] == '+' || p->data[0] == '-') {
-                if (!isinttype(s))
-                    report_err("Pointer op type mismatch: ", s->data, p->line_num);
-                res->invpoland += to_string(getsize(t->children[0])) + ",*";
-            } else if (!strcmp(p->data, "==") || !strcmp(p->data, "!=")) {
-                if (strcmp(t->data, "pointer of")) {
-                    if (p->children[0]->type != _NIL)
-                        report_err("Pointer comparison against none-0 value: ", p->children[0]->data, p->line_num);
-                } else if (strcmp(s->data, "pointer of")) {
-                    if (p->children[1]->type != _NIL)
-                        report_err("Pointer comparison against none-0 value: ", p->children[1]->data, p->line_num);
+        if (in_array(p->data, logicops)) {
+            expression res2;
+            res2.type = 0; res2.takeaddr = false;
+            res2.usign = false;
+            exptype(p->children[1], &res2);
+            if (res->type != res2.type) {
+                normal = false;
+                int d = *reg;
+                *reg += res2.type >> 3;
+                if (res2.type < res->type) {
+                    *reg += (res->type - res2.type) >> 3;
+                    res2.invpoland = string("EVAL") + to_string(res->type) + " ii0'" + to_string(d) + ",0,\n";
                 }
-            } else report_err("Pointer op not allowed: ", p->data, p->line_num);
+                res2.invpoland += string("EVAL") + to_string(res2.type) + " ii0'" + to_string(d) + ",";
+                translate_exps(p->children[1], reg, &res2);
+                funcode += res2.invpoland + "\n";
+                translate_exps(p->children[0], reg, res);
+                res->invpoland += "ii0'" + to_string(d) + ",";
+            }
         }
 
-        if (res->usign) res->invpoland += "u";
+        if (normal) {
+            if (res->type != 64) exptype(p->children[1], res);
+
+            translate_exps(p->children[0], reg, res);
+            translate_exps(p->children[1], reg, res);
+
+            TreeNode *t = getType(p->children[0]);
+            if (!strcmp(t->data, "pointer of")) {
+                TreeNode *s = getType(p->children[1]);
+                if (p->data[0] == '+' || p->data[0] == '-') {
+                    if (!isinttype(s))
+                        report_err("Pointer op type mismatch: ", s->data, p->line_num);
+                    res->invpoland += to_string(getsize(t->children[0], false)) + ",*";
+                } else if (!strcmp(p->data, "==") || !strcmp(p->data, "!=")) {
+                    if (strcmp(t->data, "pointer of")) {
+                        if (p->children[0]->type != _NIL)
+                            report_err("Pointer comparison against none-0 value: ", p->children[0]->data, p->line_num);
+                    } else if (strcmp(s->data, "pointer of")) {
+                        if (p->children[1]->type != _NIL)
+                            report_err("Pointer comparison against none-0 value: ", p->children[1]->data, p->line_num);
+                    }
+                } else report_err("Pointer op not allowed: ", p->data, p->line_num);
+            }
+
+            if (res->usign) res->invpoland += "u";
+        }
 
         res->invpoland += operatorMapping[p->data];
     } else if (!strcmp("?",p->data)) {
@@ -1123,7 +1236,10 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
         if (!strcmp(p->children[0]->data, "&")) {
             if (p->children[1]->type == _ID) {
                 res->invpoland += "@";
+                bool r = res->takeaddr;
+                res->takeaddr = true;
                 translate_exps(p->children[1],reg, res);
+                res->takeaddr = r;
             } else {
                 res->invpoland += translate_addr_exps(p->children[1], reg, res);
             }
@@ -1131,11 +1247,14 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
             if (p->children[1]->type == _ID) {
                 if (p->leftval) res->invpoland += "@";
                 res->invpoland += "i";
+                bool r = res->takeaddr;
+                res->takeaddr = true;
                 translate_exps(p->children[1],reg, res);
+                res->takeaddr = r;
             } else if (res->type >= 64) {
                 res->invpoland += "0,";
                 translate_exps(p->children[1], reg, res);
-                res->invpoland += "+";
+                res->invpoland += "+P";
             } else {
                 res->invpoland += translate_addr_exps(p->children[1], reg, res);
             }
@@ -1153,15 +1272,15 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
             res->invpoland += "~1,&";
         }
     } else if (!strcmp("sizeof",p->data)) {
-        res->invpoland += to_string(getsize(p->children[0])) + ",";
+        res->invpoland += to_string(getsize(p->children[0], true)) + ",";
     } else if (!strcmp("cast exp",p->data)) {
         TreeNode * t = getType(p->children[1]);
         if (t->size > 0)       // it is a compound type. not allowed
             report_err("Only simple types can be casted to a simple type: ", p->data, p->line_num);
-        if (getsize(t) != getsize(p->children[0])) {
+        if (getsize(t, false) != getsize(p->children[0], false)) {
             if (p->children[1]->type == _ID) {
-                if (getsize(t) < getsize(p->children[0]))
-                    res->invpoland += upgrade[getsize(t)];
+                if (getsize(t, false) < getsize(p->children[0], false))
+                    res->invpoland += upgrade[getsize(t, false)];
 
                 expression tmp;
                 exptype(p->children[1], &tmp);
@@ -1170,18 +1289,18 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
             } else {
                 int d = *reg;
                 expression tmp;
-                tmp.type = 0;
+                tmp.type = 0; tmp.takeaddr = false;
                 tmp.invpoland = "";
                 tmp.usign = false;
                 exptype(p->children[1], &tmp);
 
-                *reg += getsize(p->children[1]);
+                *reg += getsize(p->children[1], false);
                 translate_exps(p->children[1], reg, &tmp);
 
                 funcode += string("EVAL") + to_string(tmp.type) + " ii0'" + to_string(d) + "," + tmp.invpoland + "\n";
 
-                if (getsize(t) < getsize(p->children[0]))
-                    res->invpoland += upgrade[getsize(t)];
+                if (getsize(t, false) < getsize(p->children[0], false))
+                    res->invpoland += upgrade[getsize(t, false)];
 
                 res->invpoland += "ii0'";
                 res->invpoland += to_string(d) + ",";
@@ -1199,23 +1318,36 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
         res->invpoland += "0,";
         translate_exps(p->children[0],reg, res);
         res->invpoland += "+";
-    } else if (!strcmp("exps f()",p->data) || !strcmp("lib call ()",p->data) || !strcmp("execute ()",p->data)) {//function here
+    } else if (!strcmp("exps f()",p->data) || !strcmp("lib call ()",p->data)) {
+	//function here
         TreeNode * f;
         expression tmp;
         int msz;
+        library lib;
+        bool callcontract = false;
 
-        if (!strcmp("lib call ()",p->data) || !strcmp("execute ()",p->data)) {
-            library lib = findlib(p->children[0]->data);
-
+        if (!strcmp("lib call ()",p->data)) {
+            msz = 2;
+            lib = findlib(p->children[0]->data);
             f = findlibfunc(p->children[0]->data, p->children[1]->data);
             if (f == NULL)
                 report_err("Lib or lib function not found: ", p->data, p->line_num);
 
-            msz = 2;
-            if (!strcmp("execute ()",p->data)) {
-                tmp.invpoland = string("EXEC ") + lib.address + "," + lib.interface[p->children[1]->data] + ",";
-            } else tmp.invpoland = string("CALL ") + lib.address + "," + lib.interface[p->children[1]->data] + ",";
+            if (strcmp(p->children[1]->data, "execute")) {
+                tmp.invpoland = string("CALL x") + lib.address + "," + lib.interface[p->children[1]->data] + ",";
+            } else {
+                callcontract = true;
+                tmp.invpoland = string("EXEC x") + lib.address + ",";
+            }
         } else {
+    	    if (in_array(p->children[0]->data, buildins)) {
+	        	// TBD: check some (void) build-in funcs
+                extern map<string, internalFcn> buildinfunc;
+                auto bf = buildinfunc.find(p->children[0]->data);
+                bf->second(p, reg, res);
+                return;
+    	    }
+
             f = matchFuc(p->children[0]->data);
             if (f == NULL)
                 report_err("Function not defined: ", p->data, p->line_num);
@@ -1229,45 +1361,107 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
 
         int t = * reg;
         bool hasret = false;
-        if (!isvoid(fid)) {
+
+        if (!callcontract && !isvoid(fid)) {
             tmp.invpoland += string("@ii0'") + to_string(t) + ",";
-            *reg += getsize(fid->children[0]);
+            *reg += getsize(fid->children[0], false);
             hasret = true;
         }
 
         if (p->size > msz) {
-            TreeNode * para = f->children[1]->children[0];
+            TreeNode *para = f->children[1]->children[0];
             if (p->children[msz]->size < para->size)
-                report_err("Insufficient number of parameters in function call: ", p->children[0]->data, p->line_num);
-
+                report_err("Insufficient number of parameters in function call: ", p->children[0]->data,
+                           p->line_num);
             for (int j = 0; j < p->children[msz]->size; j++) {
-                if (j < para->size && !matchingTypes(getType(p->children[msz]->children[j]), getType(para->children[j])))
-                    report_err("Mismatch parameters in function call: ", p->children[msz]->children[j]->data, p->line_num);
+                if (j < para->size &&
+                    !matchingTypes(getType(p->children[msz]->children[j]), getType(para->children[j])))
+                    report_err("Mismatch parameters in function call: ", p->children[msz]->children[j]->data,
+                               p->line_num);
+            }
 
-                if (issimple(p->children[msz]->children[j]))
-                    translate_exps(p->children[msz]->children[j], reg, &tmp);
-                else {
-                    expression tmp2;
-                    int t = * reg;
+            expression tmp2;
+            if (callcontract) {
+                string ts[5];
+                fid = findlibfunc(p->children[0]->data, p->children[2]->children[2]->data);
+                hasret = !isvoid(fid);
+                for (int j = 0; j < 5; j++) {
+                    tmp2.type = 0;
+                    translate_exps(p->children[msz]->children[j], reg, &tmp2);
+                    ts[j] = tmp2.invpoland;
+                    tmp2.invpoland = "";
+                }
 
-                    tmp2.invpoland = ""; tmp2.type = 0;
-                    if (!strcmp(para->children[j]->children[0]->data, "[]")) tmp2.type = 64;
-                    else exptype(p->children[msz]->children[j], &tmp2);
+                tmp.invpoland += oneexps(ts[0], 8, reg);     // pure
+                if (hasret) {
+                    int ret = *reg;
+                    tmp.invpoland += string("@ii0'") + to_string(ret) + ",";   // return data
+                    *reg += 8;
+                } else {
+                    tmp.invpoland += "0,";
+                }
+                tmp.invpoland += oneexps(ts[1], 64, reg);     // coin
 
-                    if (tmp2.type != 8 && tmp2.type != 16 && tmp2.type != 32 && tmp2.type != 64) {
-                        report_err("Invalid function parameter type: ", p->children[0]->data, p->line_num);
+                if (p->children[msz]->children[4]->type == _NIL ||
+                     (p->children[msz]->children[3]->type == _INT && consteval(p->children[msz]->children[3]) <= 28)) {
+                    int xl = consteval(p->children[msz]->children[3]) + 4;
+                    funcode += string("COPYIMM ") + "ii0'40,D" +
+                               lib.interface[p->children[2]->children[2]->data] + ",\n"; // abi
+                    if (xl > 4) {
+                        funcode += string("COPY ") + "ii0'44," + oneexps("@" + ts[4], 64, reg) + ts[3] + "\n";
                     }
 
-                    *reg += 8;  // all params are 8 bytes long at most
-                    translate_exps(p->children[msz]->children[j], reg, &tmp2);
+                    tmp.invpoland += to_string(xl) + ",ii0'40,\n";
+                } else {
+                    int t = *reg;
+                    *reg += 4;
+                    funcode += string("EVAL32") + " ii0'" + to_string(t) + "," + ts[3] + "4,+\n";
 
-                    funcode += string("EVAL") + to_string(tmp2.type) + " ii0'" + to_string(t) + "," + tmp2.invpoland + "\n";
-                    tmp.invpoland += upgrade[tmp2.type >> 3] + string("ii0'") + to_string(t) + ",";
+                    int t2 = *reg;
+                    *reg += 8;
+
+                    tmp2.type = 0;
+
+                    funcode += string("ALLOC ") + "ii0'" + to_string(t2) + ",ii0'" + to_string(t) + ",\n";
+                    funcode += string("COPYIMM ") + "ii0'" + to_string(t2) + ",D" +
+                               lib.interface[p->children[2]->children[2]->data] + ",\n"; // abi
+                    funcode += string("COPY ") + "ii0'" + to_string(t2 + 4) + "," +
+                               oneexps("@" + ts[4], 64, reg) + oneexps(ts[3], 32, reg) + "\n";
+
+                    tmp.invpoland += "ii0'" + to_string(t) + ",";   // len
+                    tmp.invpoland += "ii0'" + to_string(t2) + ",";  // param, incl. abi
+                }
+            } else {
+                for (int j = 0; j < p->children[msz]->size; j++) {
+                    if (issimple(p->children[msz]->children[j]))
+                        translate_exps(p->children[msz]->children[j], reg, &tmp);
+                    else {
+                        expression tmp2;
+                        int t = *reg;
+
+                        tmp2.invpoland = "";
+                        tmp2.type = 0;
+                        tmp2.takeaddr = false;
+                        if (!strcmp(para->children[j]->children[0]->data, "[]")) tmp2.type = 64;
+                        else exptype(p->children[msz]->children[j], &tmp2);
+
+                        if (tmp2.type != 8 && tmp2.type != 16 && tmp2.type != 32 && tmp2.type != 64) {
+                            report_err("Invalid function parameter type: ", p->children[0]->data, p->line_num);
+                        }
+
+                        *reg += 8;  // all params are 8 bytes long at most
+                        translate_exps(p->children[msz]->children[j], reg, &tmp2);
+
+                        funcode +=
+                                string("EVAL") + to_string(tmp2.type) + " ii0'" + to_string(t) + "," + tmp2.invpoland +
+                                "\n";
+                        tmp.invpoland += upgrade[tmp2.type >> 3] + string("ii0'") + to_string(t) + ",";
+                    }
                 }
             }
         }
         funcode += tmp.invpoland + "\n";
-        if (hasret) res->invpoland += string("@ii0'") + to_string(t);
+        if (hasret) res->invpoland += string("ii0'") + to_string(t) + ",";
     } else if (!strcmp("exps arr",p->data)) { //id here
         if (res->type < 64) {
             res->invpoland += translate_addr_exps(p, reg, res);
@@ -1286,14 +1480,20 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
 
             for (int i = 0; i < ds; i++) dims.push_back(decl->children[1]->children[i]->data);
             for (int i = 0; i < p->children[1]->size; i++) {
-                res->invpoland += string(p->children[1]->children[i]->data) + ",";
+//                if (p->children[1]->children[i]->type == _INT)
+//                    res->invpoland += string(p->children[1]->children[i]->data) + ",";
+//                else {
+//                    expression tmp;
+                    translate_exps(p->children[1]->children[i], reg, res);  // &tmp);
+//                    res->invpoland += tmp.invpoland;
+//                }
                 for (int j = i + 1; j < ds; j++)
                     res->invpoland += string(dims[j]) + ",*";
                 res->invpoland += glue;
                 glue = (char *) "+";
             }
 
-            int ab = getsize(decl->children[0]);
+            int ab = getsize(decl->children[0], false);
 
             if (ab > 1) res->invpoland += to_string(ab) + ",*";
             res->invpoland += (char *) "+";
@@ -1310,6 +1510,7 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
             p->children[0]->leftval = p->leftval;
             res->invpoland += "0,";
             TreeNode * t = structaddr(p->children[0], p->children[1]->data, &res->invpoland, reg);
+            p->leftval |= t->leftval;
             res->invpoland += "+";
             if (!p->leftval)
 //            if (strcmp(t->data, "[]") && strncmp(t->data, "stspec", 6) && strcmp(t->data, "pointer of") && !p->leftval)
@@ -1319,7 +1520,7 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
         expression tmp;
         int t = * reg;
 
-        tmp.type = 0; tmp.invpoland = "";
+        tmp.type = 0; tmp.invpoland = ""; tmp.takeaddr = false;
         exptype(p->children[0], &tmp);
         if (tmp.type >= 64) {
             if (p->leftval) {
@@ -1332,7 +1533,7 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
                 else res->invpoland += "Z";
             }
         } else {
-            *reg += getsize(p->children[0]);
+            *reg += getsize(p->children[0], false);
 
             p->children[0]->leftval = p->leftval;
 
@@ -1343,6 +1544,18 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
             res->invpoland += tmp.invpoland;
         }
     }
+}
+
+string oneexps(string s, int v, int *reg) {
+    int comma = 0;
+    const char * p = s.c_str();
+    for (; *p; p++) if (*p == ',') comma++;
+    if (comma <= 1) return s;
+
+    int t = *reg;
+    *reg += v / 8;
+    funcode += string("EVAL") + to_string(v) + " ii0'" + to_string(t) + "," + s + "\n";
+    return "ii0'" + to_string(t) + ",";
 }
 
 string typetostr(TreeNode *p);
@@ -1365,10 +1578,12 @@ string arrtostr(TreeNode *p) {
 
 string typetostr(TreeNode *p) {
     if (!strcmp(p->data, "pointer of"))
-        return typetostr(p->children[0]) + "*";
+        return typetostr(p->children[0]) + " *";
     if (!strcmp(p->data, "[]"))
-        return typetostr(p->children[0]) + "" + arrtostr(p->children[1]);
+        return typetostr(p->children[0]) + " " + arrtostr(p->children[1]);
     if (!strncmp(p->data, "stspec", 6)) {
+        return string(p->children[0]->data) + " " + p->children[1]->data;
+/*
         string t = "";
 
         t = string(p->children[0]->data) + "{";
@@ -1378,6 +1593,7 @@ string typetostr(TreeNode *p) {
         } else t += stmtostr(p->children[1]);
         t += "}";
         return t;
+*/
     }
 
     return string(p->data);
@@ -1407,6 +1623,19 @@ void genabi(FILE * fp) {
     }
     fputs("}", fp);
 }
+
+#include "buildinfunc.hpp"
+
+map<string, internalFcn> buildinfunc = {
+        {"write", fwrite}, {"addDefinition", faddDefinition},
+        {"addTxin", faddTxin}, {"addTxout", faddTxout}, {"delete", fdelete},
+        {"suicide", fsuicide}, {"output", foutput}, {"libload", flibload},
+        {"hash", fhash}, {"hash160", fhash160}, {"exit", fexit}, 
+        {"fail", ffail}, {"memcopy", fmemcopy}, {"getOutpoint", fgetOutpoint},
+        {"getDefinition", fgetDefinition}, {"getCoin", fgetCoin},
+        {"getUtxo", fgetUtxo}, {"getBlockTime", fgetBlockTime},
+        {"getBlockHeight", fgetBlockHeight}, {"read", fread},
+        {"malloc", fmalloc}, {"alloc", falloc}, {"sigverify", fsigverify}};
 
 #include "good.hpp"
 

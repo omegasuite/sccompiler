@@ -32,12 +32,22 @@ int level = 0,cnt[MAX_LEVEL];// keep track num of symbol tables of this level
 map <char*, vector<int>, ptr_cmp > func_table;
 map <char*, int, ptr_cmp> func_cnt_table;
 
+const char *buildins[] = {"getCoin", "getOutpoint", "getDefinition", "getUtxo", "getBlockTime", "getBlockHeight",
+		"read", "write", "addDefinition", "addTxin", "addTxout", "malloc", "alloc", "suicide",
+		"output", "libload", "hash", "hash160", "exit", "fail", "sigverify", "memcopy", NULL};
+/*
+const char *buildins[] = {"write", "addDefinition", "mint", "addTxin", "addTxout", "suicide",
+		"output", "libload", "hash", "hash160", "exit", "fail", "sigverify", "memcopy"};
+"getMeta",
+*/
+
 vector <int> tmp_array_size_vector;
 vector <int> func_vector[MAX_FUNCS];
 vector <TreeNode*> pubfunc_vector;
 vector <char*> struct_vector[MAX_FUNCS];
 set <char*, ptr_cmp> func_set[MAX_FUNCS], struct_set[MAX_FUNCS];
-
+unsigned int abi(char* p);
+vector <char*> nameTBD;
 // libs
 
 int lib_cnt = 0, func_cnt = 0, struct_cnt = 0, tmp_num_of_var = 0, func_vector_cnt = 0, struct_vector_cnt = 0, tmp_num = 1, tmp_num_struct = 0;
@@ -129,14 +139,21 @@ bool isReserved(char* s) {
 	return false;
 }
 
-char * currentline = (char *) "";
+extern int skiplines;
+extern vector <char*> allines;
 
 void report_err(const char *s1, const char *s2, int linenum) {
-	fprintf(stderr,"%s\nat line %d:\t",currentline, linenum);
+    if (linenum > skiplines)
+        fprintf(stderr,"%d: %s\n", linenum - skiplines - 1, allines[linenum - 1]);
+    fprintf(stderr,"%d: %s\n", linenum - skiplines, allines[linenum]);
+    fprintf(stderr,"%d: %s\n", linenum - skiplines + 1, allines[linenum + 1]);
+
+	fprintf(stderr,"at line %d:\t", linenum - skiplines + 1);
+
 	if (s1!=NULL) fprintf(stderr,"%s ",s1);
 	if (s2!=NULL) fprintf(stderr,"%s ",s2);
 	fprintf(stderr,"\n");
-	exit(1);
+    exit(1);
 }
 
 void semantics_check(TreeNode* p) {
@@ -290,9 +307,11 @@ void semantics_check_exps(TreeNode *p) {
 	} else if (p->type == _INT) {
 		semantics_check_int(p);
 		return;
-	} if (p->type == _STRING) {
+	} else if (p->type == _STRING) {
 		semantics_check_string(p);
 		return;
+	} else if (p->type == _NIL) {
+	    return;
 	}
 
 	nodeType(p, _EXPS);
@@ -335,7 +354,11 @@ void semantics_check_exps(TreeNode *p) {
 */
 	} else if (!strcmp(p->data,"exps f()")) {
 		if (func_table.find(p->children[0]->data)==func_table.end()) { //don't find the function
-			report_err(p->children[0]->data,"not declared",p->children[0]->line_num);
+		    // is it a build-in func?
+		    if (!in_array(p->children[0]->data, buildins)) {
+                nameTBD.push_back(p->children[0]->data);
+//		        report_err(p->children[0]->data,"not declared",p->children[0]->line_num);
+		    }
 		} else {
 			int func_tmp = func_cnt_table[p->children[0]->data];
 			func_cnt_table[p->children[0]->data] = 0;
@@ -586,6 +609,26 @@ char * semantics_check_type(TreeNode *p) {
 
 void semantics_check_func(TreeNode *p) { 
 	nodeType(p, _FUNC);
+
+	if (!strcmp("ABI", p->children[0]->data)) {
+		TreeNode * para = p->children[1];
+		if (para->size != 1) {
+			report_err("Macro ABI must have exactly 1 parameter", p->children[0]->data,p->children[1]->line_num);
+		}
+		semantics_check_string(para->children[0]);
+
+		p->type = _INT;
+		free(p->children);
+		p->size = 0;
+
+		unsigned int x = abi(para->children[0]->data);
+		if (strlen(p->data) < 9) {
+			free(p->data);
+			p->data = (char *) malloc(10);
+		}
+		sprintf(p->data, "x%08x", x);
+		return;
+	}
 
 	++func_cnt;
 
@@ -848,7 +891,13 @@ void check_left_value_exps(TreeNode *p) {
 */
 
 void semantics(TreeNode *p) {
-	semantics_check(p);
+    semantics_check(p);
+
+    for (auto it : nameTBD) {
+        if (stricmp(it, "abi") && func_table.find(it) == func_table.end()) {
+            report_err(it, " not declared", p->children[0]->line_num);
+        }
+    }
 }
 
 #endif
