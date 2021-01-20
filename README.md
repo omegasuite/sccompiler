@@ -10,7 +10,7 @@ To further translate assembly code to VM code, use http://omegasuite.org/omega/a
 
 Win 64 excutable is include for your convenience. Tu compile, run:
 
-# sc.exe <source file name>
+sc.exe <source file name>
 
 Make sure file buildin.c is in your source code file.
 
