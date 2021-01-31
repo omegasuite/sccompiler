@@ -68,7 +68,7 @@ to the offset. E.g., if the prototype of a public function is:
 
     |--- 21 byte contract address ---|- 4 bytes func ID -|-- 125 (8 bytes) --|-- 28 (8 bytes) --|abcdefghijklmnopqrstuvwxyz
 	
-    For parameter s, you should use value 28 as staring address of "abcdefghijklmnopqrstuvwxyz" because
+    For parameter s, you should use value 28 as address of "abcdefghijklmnopqrstuvwxyz" because
 	28 = 12 (don't ask why) + 8 (length of parameter n) + 8 (length of parameter s).
 
 16. For anything else, see the examples.

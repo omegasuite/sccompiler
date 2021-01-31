@@ -43,6 +43,10 @@ unsigned int abi(char* p) {
     MD5_CTX      tctx;
     unsigned char tk[16];
 
+    if (!strcmp(p, "void init()")) {
+        return 0x11;
+    }
+
     MD5Init(&tctx);
     MD5Update(&tctx,(unsigned char*) p, strlen(p));
     MD5Final(tk, &tctx);
