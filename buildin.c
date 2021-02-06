@@ -79,24 +79,24 @@ struct __definition__ {
 	} data;
 };
 
-struct __txout__ {
-	struct __coin__ coin;
-	int pklen;
-	uchar * pkscript;
+struct __minttype__ {
+	long tokentype;
+	struct __outpoint__ minted;
 };
 
 // build-in inline functions:
 // void getOutpoint(struct __outpoint__ *);
 // void getDefinition(struct __definition__ *, uchar[32] a, char type);
 // void getCoin(struct __coin__ *);
-// void getUtxo(struct __txout__ *, struct __outpoint__ * a);
+// void getUtxo(char *, struct __outpoint__ * a);
 // void getBlockTime(int *);
 // void getBlockHeight(int *);
 // void read(struct __storedata__*, long a);
 // void write(long key, struct __storedata__ * a);
+// void delete(long key);
 // void addDefinition(struct __definition__ * a);
 // void addTxin(struct __outpoint__ * a);
-// void addTxout(int *, struct __txout__ * a);
+// void addTxout(int *, char * a);
 // void malloc(void *, uint a);
 // void alloc(void *, uint a);
 // void suicide();
@@ -110,31 +110,23 @@ struct __txout__ {
 // void sigverify(char * r, char * hash, char * pubkey, char * sig);
 
 // build-in functions:
-struct __storedata__ getMeta(char * a) {
+void getMeta(char *r, char * a) {
 	int n;
-	char [256]tmp;
 	char * p;
-	@@
-		EVAL64 ii0"8,i8,0,!		; if receiver is null, return
-		IF ii0"8,2,
-		RETURN
-	@@
+
+	if (r == nil) return;
 	n = 0;
 	p = a;
 	while (*p != 0) {
 		p += 1;
 		n += 1;
 	}
-	n += 1;
 	@@
-		META ii0"48,ii0"40,ii16,		; tmp = meta data. length + content. max. 256 bytes
-		MALLOC ii8'4,ii0"48,			; alloc global space for meta
-		EVAL32 ii8,ii0"48,1,-			; actual length
-		COPY ii8'4,ii0"52,ii8,			; copy data
+		META ii8,ii0"40,ii16,
 	@@
 }
 
-struct __outpoint__ mint(struct __coin__ * a) {
+void mint(struct __minttype__ * r, struct __coin__ * a) {
 	long type;
 	type = a->tokentype & 3;
 	if (type < 2) {

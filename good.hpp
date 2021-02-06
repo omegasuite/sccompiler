@@ -17,7 +17,7 @@ void exptype(TreeNode *p, expression *res) {
     } else {
         int t = getsize(p, false);
         if (t > 0 && t * 8 != res->type)
-            report_err("Invalid type in expression： ", p->data, p->line_num);
+            report_err("Invalid type in expression: ", p->data, p->line_num);
     }
 }
 
@@ -55,7 +55,7 @@ void collectNames(TreeNode* q, map<char*, TreeNode*, ptr_cmp> * myspace) {
         if (myspace->find(q->data) == myspace->end())
             (*myspace)[q->data] = q;
         else
-            report_err("redeclared variable： ", q->data, q->line_num);
+            report_err("redeclared variable: ", q->data, q->line_num);
         return;
     }
 
@@ -75,7 +75,7 @@ void collectFuncs(TreeNode* p, map<char*, TreeNode*, ptr_cmp> * myspace) {
             if (myspace->find(p->data) == myspace->end())
                 (*myspace)[p->data] = q;
             else
-                report_err("redeclared variable： ", q->data, q->line_num);
+                report_err("redeclared variable: ", q->data, q->line_num);
         }
     }
 }
@@ -96,7 +96,7 @@ void collectDefs(TreeNode* q, map<char*, TreeNode*, ptr_cmp> * myspace) {
             }
             (*myspace)[q->children[1]->data] = q;
         } else
-            report_err("redeclared variable： ", q->data, q->line_num);
+            report_err("redeclared variable: ", q->data, q->line_num);
         return;
     } else if (q->type == _STMTBLOCK) {
         if (q->size == 0 || q->children[0]->type != _DEFS || q->children[0]->size == 0) return;
@@ -219,8 +219,8 @@ int assign(TreeNode *p, int at, bool global) { // pointer, struct
         assignments += string("; Assign ") + p->address + " to var " + p->data + "\n";
         if (p->size == 0) {
             TreeNode *q = matchID(p->data);
-            if (q == NULL) report_err("Var undefined： ", p->data, p->line_num);
-            if (!checkType(q)) report_err("Type undefined： ", q->data, q->line_num);
+            if (q == NULL) report_err("Var undefined: ", p->data, p->line_num);
+            if (!checkType(q)) report_err("Type undefined: ", q->data, q->line_num);
             p->children = (TreeNode **) malloc(sizeof(TreeNode *));
             p->children[0] = q;
             p->size = 1;
@@ -249,6 +249,6 @@ int assign(TreeNode *p, int at, bool global) { // pointer, struct
         free(s);
         return at;
     }
-    report_err("type definition error： ", p->data, p->line_num);
+    report_err("type definition error: ", p->data, p->line_num);
     return at;
 }

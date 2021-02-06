@@ -44,13 +44,14 @@ unsigned int abi(char* p) {
     unsigned char tk[16];
 
     if (!strcmp(p, "void init()")) {
-        return 0x11;
+        return 0x1;
     }
 
     MD5Init(&tctx);
     MD5Update(&tctx,(unsigned char*) p, strlen(p));
     MD5Final(tk, &tctx);
 
+    // TBD: duplicate check
     return *((unsigned int*)tk);
 }
 
@@ -183,7 +184,8 @@ TreeNode * structaddr(TreeNode * p, const char *name, string *begin, int * reg) 
     }
 
     if (p->type == _EXPS && !strcmp(p->data, "exps f()")) {
-        expression tmp;
+        expression tmp = {0, false, false, ""};
+
         translate_exps(p, reg, &tmp);
 
         *begin += tmp.invpoland;
@@ -193,7 +195,8 @@ TreeNode * structaddr(TreeNode * p, const char *name, string *begin, int * reg) 
     }
 
     if (p->type == _EXPS) { // && !strcmp(p->data, "exps ()")) {
-        expression tmp;
+        expression tmp = {0, false, false, ""};
+
         int t = * reg;
 
         * reg += 8;
@@ -306,7 +309,7 @@ TreeNode * getType(TreeNode *p) {
 
             TreeNode * t = getType(p->children[1]);
             if (!matchingTypes(s, t)) {
-                if (!strcmp(s->data, "pointer of") && (p->data[0] == '+' || p->data[0] == '-') &&
+                if ((!strcmp(s->data, "pointer of") || !strcmp(s->data, "[]")) && (p->data[0] == '+' || p->data[0] == '-') &&
                         isinttype(t))
                     return s;
                 report_err("operand type mismatch error: ", p->data, p->line_num);
@@ -316,7 +319,7 @@ TreeNode * getType(TreeNode *p) {
             TreeNode * s = getType(p->children[0]);
             TreeNode * t = getType(p->children[1]);
             if (!matchingTypes(s, t))
-                report_err("operand type mismatch error： ", p->data, p->line_num);
+                report_err("operand type mismatch error: ", p->data, p->line_num);
 
             s = getType(p->children[2]);
             if (!matchingTypes(s, t))
@@ -697,7 +700,7 @@ void phase3_translate() {
     if (mainnode && mainnode->size > 2) {	// gen main code first
         // only "void main()" allowed
         if (mainnode->children[1]->size > 1 || !isvoid(mainnode)) {
-            report_err("only void constructor() allowed：", "", mainnode->line_num);
+            report_err("only void constructor() allowed: ", "", mainnode->line_num);
         }
 
         mainnode->staticspace = 0;
@@ -846,7 +849,8 @@ int basictype(TreeNode *p) {
 }
 
 string translate_addr_exps(TreeNode *p, int *reg, expression *res) {
-    expression tmp;
+    expression tmp = {0, false, false, ""};
+
     int t = * reg;
 
     * reg += 8;
@@ -909,9 +913,9 @@ int translate_stmt(TreeNode * pfunc, TreeNode *p) {
 
     funcode += string("; ") + p->line + "\n";
 
-    expression exp = {0, false, ""};
-    int reg = pfunc->staticspace;
+    expression exp = {0, false, false, ""};
 
+    int reg = pfunc->staticspace;
     if (!strcmp(p->data,"stmt: asm;")) {
         funcode += p->children[0]->data;
     } else if (!strcmp("return stmt",p->data)) {
@@ -996,7 +1000,7 @@ int translate_stmt(TreeNode * pfunc, TreeNode *p) {
             if (q->address == NULL)
                 q = matchID(q->data);
             if (q == NULL)
-                report_err("Var undefined： ", p->data, p->line_num);
+                report_err("Var undefined: ", p->data, p->line_num);
 
             string assignee = string(q->address);
 
@@ -1165,7 +1169,7 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
         if (p->address == NULL)
             q = matchID(p->data);
         if (q == NULL)
-            report_err("Var undefined： ", p->data, p->line_num);
+            report_err("Var undefined: ", p->data, p->line_num);
 
         int bs = basictype(q->children[0]);
         if (p->leftval) res->invpoland += "@";
@@ -1179,9 +1183,8 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
         bool normal = true;
         exptype(p->children[0], res);
         if (in_array(p->data, logicops)) {
-            expression res2;
-            res2.type = 0; res2.takeaddr = false;
-            res2.usign = false;
+            expression res2 = {0, false, false, ""};
+
             exptype(p->children[1], &res2);
             if (res->type != res2.type) {
                 normal = false;
@@ -1286,16 +1289,15 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
                 if (getsize(t, false) < getsize(p->children[0], false))
                     res->invpoland += upgrade[getsize(t, false)];
 
-                expression tmp;
+                expression tmp = {0, false, false, ""};
+
                 exptype(p->children[1], &tmp);
                 translate_exps(p->children[1], reg, &tmp);
                 res->invpoland += tmp.invpoland;
             } else {
                 int d = *reg;
-                expression tmp;
-                tmp.type = 0; tmp.takeaddr = false;
-                tmp.invpoland = "";
-                tmp.usign = false;
+                expression tmp = {0, false, false, ""};
+
                 exptype(p->children[1], &tmp);
 
                 *reg += getsize(p->children[1], false);
@@ -1325,7 +1327,8 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
     } else if (!strcmp("exps f()",p->data) || !strcmp("lib call ()",p->data)) {
 	//function here
         TreeNode * f;
-        expression tmp;
+        expression tmp = {0, false, false, ""};
+
         int msz;
         library lib;
         bool callcontract = false;
@@ -1384,7 +1387,8 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
                                p->line_num);
             }
 
-            expression tmp2;
+            expression tmp2 = {0, false, false, ""};
+
             if (callcontract) {
                 string ts[5];
                 fid = findlibfunc(p->children[0]->data, p->children[2]->children[2]->data);
@@ -1440,7 +1444,8 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
                     if (issimple(p->children[msz]->children[j]))
                         translate_exps(p->children[msz]->children[j], reg, &tmp);
                     else {
-                        expression tmp2;
+                        expression tmp2 = {0, false, false, ""};
+
                         int t = *reg;
 
                         tmp2.invpoland = "";
@@ -1521,10 +1526,9 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
                 res->invpoland += "P";
         }
     } else if (!strcmp(p->data, "deference")) {
-        expression tmp;
+        expression tmp = {0, false, false, ""};
         int t = * reg;
 
-        tmp.type = 0; tmp.invpoland = ""; tmp.takeaddr = false;
         exptype(p->children[0], &tmp);
         if (tmp.type >= 64) {
             if (p->leftval) {

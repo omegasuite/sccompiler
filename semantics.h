@@ -32,9 +32,10 @@ int level = 0,cnt[MAX_LEVEL];// keep track num of symbol tables of this level
 map <char*, vector<int>, ptr_cmp > func_table;
 map <char*, int, ptr_cmp> func_cnt_table;
 
-const char *buildins[] = {"getCoin", "getOutpoint", "getDefinition", "getUtxo", "getBlockTime", "getBlockHeight",
-		"read", "write", "addDefinition", "addTxin", "addTxout", "malloc", "alloc", "suicide",
-		"output", "libload", "hash", "hash160", "exit", "fail", "sigverify", "memcopy", NULL};
+const char *buildins[] = {"getCoin", "getOutpoint", "getDefinition", "getUtxo",
+        "getBlockTime", "getBlockHeight", "read", "write", "addDefinition", "addTxin",
+        "addTxout", "delete", "malloc", "alloc", "suicide",	"output", "libload",
+        "hash", "hash160", "exit", "fail", "sigverify", "memcopy", NULL};
 /*
 const char *buildins[] = {"write", "addDefinition", "mint", "addTxin", "addTxout", "suicide",
 		"output", "libload", "hash", "hash160", "exit", "fail", "sigverify", "memcopy"};
@@ -148,7 +149,7 @@ void report_err(const char *s1, const char *s2, int linenum) {
     fprintf(stderr,"%d: %s\n", linenum - skiplines, allines[linenum]);
     fprintf(stderr,"%d: %s\n", linenum - skiplines + 1, allines[linenum + 1]);
 
-	fprintf(stderr,"at line %d:\t", linenum - skiplines + 1);
+	fprintf(stderr,"at line %d: \t", linenum - skiplines + 1);
 
 	if (s1!=NULL) fprintf(stderr,"%s ",s1);
 	if (s2!=NULL) fprintf(stderr,"%s ",s2);

@@ -4,8 +4,8 @@
 #include "def.h"
 
 void getparam(TreeNode *p, int * reg, string last[]) {
-	expression tmp2;
-    tmp2.takeaddr = false;
+	expression tmp2 = {0, false, false, ""};
+
     for (int j = 0; j < p->children[1]->size; j++) {
         auto para =  p->children[1];
 		tmp2.invpoland = ""; tmp2.type = 0;
@@ -307,10 +307,10 @@ void fhash(TreeNode *p, int * reg, expression *res) {
 }
 
 void fhash160(TreeNode *p, int * reg, expression *res) {
-	if (p->children[1]->size != 3)
+	if (p->children[1]->size < 3 || p->children[1]->size > 4)
            report_err("Incorrect number of parameters in function call: ", p->children[0]->data, p->line_num);
 
-	string last[3];
+	string last[4];
 	getparam(p, reg, last);
 
 	res->invpoland = "HASH160 ";
@@ -320,6 +320,9 @@ void fhash160(TreeNode *p, int * reg, expression *res) {
     res->invpoland += last[0];
 //    if (addi(last[1][0])) res->invpoland += "i";
     res->invpoland += last[1];
+
+    if (p->children[1]->size == 4)
+        res->invpoland += last[3];
 }
 
 void fexit(TreeNode *, int * reg, expression *res) {

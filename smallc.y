@@ -298,7 +298,7 @@ equality_expression
 
 logical_and_expression
 	: equality_expression {$$=$1;}
-	| logical_and_expression AND_OP inclusive_or_expression { $$ = create_node(yylineno,_EXPS, $2, 2, $1,$3); }
+	| logical_and_expression AND_OP equality_expression { $$ = create_node(yylineno,_EXPS, $2, 2, $1,$3); }
 	;
 
 logical_or_expression
