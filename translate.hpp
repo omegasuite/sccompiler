@@ -430,7 +430,6 @@ int getsize(TreeNode *p, bool fullArray) {
 
     if (!strcmp(p->data, "pointer of")) return 8;
     if (!strcmp(p->data, "void")) return 0;
-    if (p->data[0] >= '0' && p->data[0] <= '9') return -1;
     if (!strcmp(p->data, "char") || !strcmp(p->data, "uchar")) return 1;
     if (!strcmp(p->data, "short") || !strcmp(p->data, "ushort")) return 2;
     if (!strcmp(p->data, "int") || !strcmp(p->data, "uint")) return 4;
@@ -471,6 +470,10 @@ int getsize(TreeNode *p, bool fullArray) {
             s *= consteval(r->children[i]);
         return s;
     }
+
+    if ((p->data[0] >= '0' && p->data[0] <= '9') ||
+        p->data[0] == 'x' || p->data[0] == 'n' ||
+        (p->data[0] >= 'a' && p->data[0] <= 'f')) return -1;
 
     report_err("type definition error: ", p->data, p->line_num);
 
@@ -1047,6 +1050,7 @@ int translate_stmt(TreeNode * pfunc, TreeNode *p) {
 
             p->children[0]->leftval = true;
             translate_exps(p->children[0], &reg, &exp);
+            p->children[1]->leftval = false;
             translate_exps(p->children[1], &reg, &exp);
             funcode += string("EVAL") + to_string(exp.type) + " " + exp.invpoland + "\n";
         }
@@ -1248,6 +1252,7 @@ void translate_exps(TreeNode *p, int * reg, expression *res) {
                 translate_exps(p->children[1],reg, res);
                 res->takeaddr = r;
             } else {
+                p->children[1]->leftval = true;
                 res->invpoland += translate_addr_exps(p->children[1], reg, res);
             }
         } else if (!strcmp(p->children[0]->data, "*")) {

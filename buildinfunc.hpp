@@ -183,7 +183,11 @@ void fdelete(TreeNode *p, int * reg, expression *res) {
 	string last[1];
 	getparam(p, reg, last);
 	res->invpoland = string("DEL ");
-    if (addi(last[0][0])) res->invpoland += "i";
+	if (basictype(p->children[1]->children[0]) == 8) {
+        res->invpoland += "Q";
+	}
+
+//    if (addi(last[0][0])) res->invpoland += "i";
     res->invpoland += last[0];
 }
 
@@ -197,13 +201,10 @@ void fwrite(TreeNode *p, int * reg, expression *res) {
 	char * l2 = (char*)last[1].data();
     l2 = substr(l2, -1, last[1].length());
 
-    res->invpoland = string("EVAL64 ") + "ii0'8,";
-    if (addi(l2[0])) res->invpoland += "i";
+    res->invpoland += string("EVAL64 ii0'8,");
+    if (addi(last[1][0])) res->invpoland += "i";
     res->invpoland += string(l2) + "\"4,\n";
-
-	res->invpoland += string("STORE ");
-//    if (addi(last[0][0])) res->invpoland += "i";
-    res->invpoland += last[0];
+	res->invpoland += string("STORE ") + last[0];
     if (addi(last[1][0])) res->invpoland += "i";
     res->invpoland += last[1] + "iii0'8,";
 }
@@ -274,9 +275,9 @@ void foutput(TreeNode *p, int * reg, expression *res) {
     res->invpoland += "COPY gi4,";
     if (addi(last[1][0])) res->invpoland += "i";
     res->invpoland += last[1];
-    if (addi(last[0][0])) res->invpoland += "i";
+//    if (addi(last[0][0])) res->invpoland += "i";
     res->invpoland += last[0] + "\nEVAL32 gi0,";
-    if (addi(last[0][0])) res->invpoland += "i";
+//    if (addi(last[0][0])) res->invpoland += "i";
     res->invpoland += last[0] + "\n";
 	res->invpoland += "STOP";       // stop since it destroys frame header
 }

@@ -208,7 +208,7 @@ bool matchingTypes(TreeNode *p, TreeNode *q) {
     return true;
 }
 
-map<const char *, char *, ptr_cmp> strclloc;
+// map<const char *, char *, ptr_cmp> strclloc;
 
 int assign(TreeNode *p, int at, bool global) { // pointer, struct
     if (p->type == _ID) {
@@ -237,14 +237,14 @@ int assign(TreeNode *p, int at, bool global) { // pointer, struct
         }
         *t = '\0';// *--t = '0'; *--t = '0';
 
-        auto addr = strclloc.find(p->data);
-        if (addr == strclloc.end()) {
+//        auto addr = strclloc.find(p->data);
+//        if (addr == strclloc.end()) {
             p->address = strdup((string("@ii0'") + to_string(at)).data());
-            strclloc[p->data] = p->address;
+//            strclloc[p->data] = p->address;
             at += strlen(p->data) + 1;
             assignments += string("; Assign ") + p->address + " to string " + p->data + "\n";
             assignments += string("COPYIMM ") + p->address + ",L" + to_string(strlen(p->data) + 1) + "," + s + "00,\n";
-        } else p->address = addr->second;
+//        } else p->address = addr->second;
 
         free(s);
         return at;
