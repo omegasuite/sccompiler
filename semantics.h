@@ -691,6 +691,9 @@ void semantics_check_extdef(TreeNode* p) {
     } else if (!strcmp("import",p->data)) {//global variable declearations
         semantics_check_id(p->children[0]);
 //		semantics_check_extvars(p->children[1]);
+    } else if (!strcmp("inherit",p->data)) {//global variable declearations
+        semantics_check_id(p->children[0]);
+//		semantics_check_extvars(p->children[1]);
     } else { //function declarations
         nodeType(p, _EXTDEF);
 		semantics_check_type(p->children[0]->children[0]);

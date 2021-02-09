@@ -578,11 +578,23 @@ bool isunsigned(TreeNode *p) {
 
 void setfuncspace(TreeNode* q);
 
+TreeNode * inheritfrom = NULL;
+
 void imports(TreeNode* root) {
-    // the execute protocol
-    for (int i = 0; i < root->size; i++) {
+   vector <const char *> imported;
+   for (int i = 0; i < root->size; i++) {
         TreeNode * p = root->children[i];
-        if (strcmp("import", p->data)) continue;
+        if (strcmp("import", p->data) && strcmp("inherit", p->data)) continue;
+        if (!strcmp("inherit", p->data)) {
+            if (inheritfrom)
+                report_err("Only one inherit statement is allowed in a contract: ", p->data, p->line_num);
+        }
+
+        for (int j= 0; j < imported.size(); j++) {
+            if (!strcmp(imported[j], p->children[0]->data))
+                report_err("Double import of the same contract: ", p->children[0]->data, p->line_num);
+        }
+        imported.push_back(p->children[0]->data);
 
         char fname[255];
         strcpy(fname, p->children[0]->data);
@@ -679,6 +691,7 @@ void imports(TreeNode* root) {
         namespaces[0][p->children[0]->data] =
            create_node(0, _ID, p->children[0]->data, 1,
                   create_node(0, _STRING, lib.address, 0));
+        inheritfrom = namespaces[0][p->children[0]->data]->children[0];
 
         // funcode += string("LIBLOAD 0,rx") + lib.address + ",\n";
     }
@@ -753,11 +766,15 @@ void phase3_translate() {
                 // be more than 1, and return is executed. if it is a tx call, the
                 // stack depth would be 1 and return ignored, then stop executed.
                 cout << "\nRETURN\nSTOP\n";
-            } else fallthroughnode = p;
+            } else if (inheritfrom)
+                report_err("Fallthrough function void _() is not allowed where contract inheris another contract.", p->data, p->line_num);
+            else fallthroughnode = p;
         }
     }
 
-    if (fallthroughnode) {
+    if (inheritfrom) {
+        cout << "LIBLOAD x" << inheritfrom->data << ",x20,\n";
+    } else if (fallthroughnode) {
         cout << "CALL 0,." <<  fallthroughnode->children[0]->data << ",";
         for (int i = 0; i < fallthroughnode->children[2]->size; i++) {
             cout << "gi" << ((i<<3) + 12) << ",";

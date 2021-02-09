@@ -21,7 +21,7 @@ extern int yylineno;
 
 %token <string> INT ID STRING NIL
 %token <string> TYPE STRUCT UNION RETURN PUBLIC
-%token <string> IF ELSE BREAK CONT WHILE IMPORT FOR
+%token <string> IF ELSE BREAK CONT WHILE IMPORT FOR INHERIT
 %token <string> ADD_ASSIGN SUB_ASSIGN MUL_ASSIGN DIV_ASSIGN AND_ASSIGN MOD_ASSIGN
 %token <string> XOR_ASSIGN OR_ASSIGN RIGHT_OP LEFT_OP SIZEOF
 %token <string> AND_OP OR_OP EQ_OP NE_OP RIGHT_ASSIGN LEFT_ASSIGN POW_ASSIGN
@@ -64,6 +64,7 @@ EXTDEF
 	: XTYPE EXTVARS ';' { $$ = create_node(yylineno, _EXTDEF, "extdef", 1, reorg_var_dec_node($1, $2)); }
 	| STSPEC ';' { $$ = $1; }
 	| IMPORT ID ';' { int lno = yylineno; $$ = create_node(lno,_EXTDEF, "import", 1, create_node(lno,_ID, $2, 0)); }
+	| INHERIT ID ';' { int lno = yylineno; $$ = create_node(lno,_EXTDEF, "inherit", 1, create_node(lno,_ID, $2, 0)); }
 	| FUNC STMTBLOCK {
 		TreeNode * t = $1->children[0];
 		if ($1->size == 2) $1->children[0] = $1->children[1];

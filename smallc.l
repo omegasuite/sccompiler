@@ -45,6 +45,7 @@ char * substr(char *, int, int);
 "while" { scanner(yytext); yylval.string = strdup(yytext); return FOR;}
 "sizeof" { scanner(yytext); yylval.string = strdup(yytext); return SIZEOF;}
 "import" { scanner(yytext); yylval.string = strdup(yytext); return IMPORT;}
+"inherit" { scanner(yytext); yylval.string = strdup(yytext); return INHERIT;}
 "public" { scanner(yytext); yylval.string = strdup(yytext); return PUBLIC;}
 "nil" { scanner(yytext); yylval.string = strdup(yytext); return NIL;}
 ";" { scanner(yytext); yylval.string = strdup(yytext); return ';';}
