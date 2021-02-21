@@ -171,7 +171,7 @@ bool isinttype(TreeNode * p) {
            !strcmp(p->data, "char") || !strcmp(p->data, "uchar") ||
            !strcmp(p->data, "short") || !strcmp(p->data, "ushort") ||
            !strcmp(p->data, "int") || !strcmp(p->data, "uint") ||
-           !strcmp(p->data, "big");
+           !strcmp(p->data, "big") || !strcmp(p->data, "999");
 }
 
 bool matchingTypes(TreeNode *p, TreeNode *q) {

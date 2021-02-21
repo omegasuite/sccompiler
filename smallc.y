@@ -363,6 +363,8 @@ void yyerror(const char *s) {
 	fprintf(stderr,"%s. error near %s\n",s, scanned);
 }
 
+bool debugmode = false;
+
 int main(int argc, char *argv[]) {
 	pid_t pid = 0;
 	int pipefd[2];
@@ -375,6 +377,7 @@ int main(int argc, char *argv[]) {
 	pipefd[1] = creat("__tmp", 0777);
 	
 		FILE * fp;
+		char tp[255];
 
 		fp = fopen("buildin.c", "r");
 		if (!fp) {
@@ -392,9 +395,14 @@ int main(int argc, char *argv[]) {
 		fclose(fp);
 
 		for (int i = 1; i < argc; i++) {
+			if (!strcmp(argv[i], "-debug")) {
+				debugmode = true;
+				continue;
+			}
+			strcpy(tp, argv[i]);
 			fp = fopen(argv[i], "r");
 			if (!fp) {
-				cout << "Missing " << argv[1];
+				cout << "Missing " << argv[i];
 				exit(1);
 			}
 
@@ -429,11 +437,9 @@ int main(int argc, char *argv[]) {
 			
 //			print_ast(progroot, 0);
 
-			char tp[255];
 			char compiled[255];
 			char * p;
 
-			strcpy(tp, argv[1]);
 			for (p = tp + strlen(tp) - 1; p != tp && *p != '.'; p--);
 			if (*p == '.') *p = '\0';
 

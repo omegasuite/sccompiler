@@ -20,7 +20,7 @@ void getparam(TreeNode *p, int * reg, string last[]) {
  			if (!strcmp(q->data, "[]")) tmp2.type = 64;
 			else exptype(para->children[j], &tmp2);
 			
-			if (tmp2.type != 8 && tmp2.type != 16 && tmp2.type != 32 && tmp2.type != 64) {
+			if (tmp2.type > 64) {
 				report_err("Invalid function parameter type: ", p->children[0]->data, p->line_num);
 			}
 			
@@ -104,6 +104,17 @@ void fgetBlockHeight(TreeNode *p, int * reg, expression *res) {
     res->invpoland += last[0];
 }
 
+void fgetVersion(TreeNode *p, int * reg, expression *res) {
+    if (p->children[1]->size != 1)
+        report_err("Incorrect number of parameters in function call: ", p->children[0]->data, p->line_num);
+
+    string last[1];
+    getparam(p, reg, last);
+    res->invpoland = "VERSION ";
+    if (addi(last[0][0])) res->invpoland += "i";
+    res->invpoland += last[0];
+}
+
 void fgetBlockTime(TreeNode *p, int * reg, expression *res) {
 	if (p->children[1]->size != 1)
            report_err("Incorrect number of parameters in function call: ", p->children[0]->data, p->line_num);
@@ -116,10 +127,10 @@ void fgetBlockTime(TreeNode *p, int * reg, expression *res) {
 }
 
 void fgetUtxo(TreeNode *p, int * reg, expression *res) {
-	if (p->children[1]->size != 2)
+	if (p->children[1]->size < 3 && p->children[1]->size > 4)
            report_err("Incorrect number of parameters in function call: ", p->children[0]->data, p->line_num);
 
-	string last[3];
+	string last[4];
 	getparam(p, reg, last);
     last[2] = string(substr((char*)last[1].data(), -1, last[1].length())) + "\"32,";
 	res->invpoland = "GETUTXO ";
@@ -127,8 +138,9 @@ void fgetUtxo(TreeNode *p, int * reg, expression *res) {
     res->invpoland += last[0];
     if (addi(last[1][0])) res->invpoland += "i";
     res->invpoland += last[1];
-//    if (addi(last[2][0])) res->invpoland += "i";
     res->invpoland += last[2];
+    if (p->children[1]->size == 3)
+        res->invpoland += last[3];
 }
 
 void fgetCoin(TreeNode *p, int * reg, expression *res) {

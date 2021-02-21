@@ -35,7 +35,7 @@ map <char*, int, ptr_cmp> func_cnt_table;
 const char *buildins[] = {"getCoin", "getOutpoint", "getDefinition", "getUtxo",
         "getBlockTime", "getBlockHeight", "read", "write", "addDefinition", "addTxin",
         "addTxout", "delete", "malloc", "alloc", "suicide",	"output", "libload",
-        "hash", "hash160", "exit", "fail", "sigverify", "memcopy", NULL};
+        "hash", "hash160", "exit", "fail", "sigverify", "memcopy", "getVersion", NULL};
 /*
 const char *buildins[] = {"write", "addDefinition", "mint", "addTxin", "addTxout", "suicide",
 		"output", "libload", "hash", "hash160", "exit", "fail", "sigverify", "memcopy"};
