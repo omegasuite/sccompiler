@@ -992,6 +992,10 @@ map < const char*, char, ptr_cmp > assignovmop = {
         {"|=", '|'}, {"#=", '#'}
 };
 
+bool simplestmt(TreeNode *p) {
+     return strcmp("if stmt",p->data) && strcmp("for stmt",p->data);
+}
+
 int translate_stmt(TreeNode * pfunc, TreeNode *p) {
     if (p->type == _DEFS) return 0;
     if (p->type == _STMTBLOCK) {
@@ -1025,7 +1029,7 @@ int translate_stmt(TreeNode * pfunc, TreeNode *p) {
 
     funcode += string("; ") + p->line + "\n";
 
-    if (debugmode && p->line_num >= skiplines) {
+    if (debugmode && p->line_num >= skiplines && simplestmt(p)) {
         funcode += string(";#{\"srcline\":") + to_string(p->line_num - skiplines + 1) + "}\nNOP\n";
     }
 
