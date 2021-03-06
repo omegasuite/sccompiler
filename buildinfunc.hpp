@@ -127,11 +127,12 @@ void fgetBlockTime(TreeNode *p, int * reg, expression *res) {
 }
 
 void fgetUtxo(TreeNode *p, int * reg, expression *res) {
-	if (p->children[1]->size < 3 && p->children[1]->size > 4)
+	if (p->children[1]->size < 2 || p->children[1]->size > 3)
            report_err("Incorrect number of parameters in function call: ", p->children[0]->data, p->line_num);
 
 	string last[4];
 	getparam(p, reg, last);
+    last[3] = last[2];
     last[2] = string(substr((char*)last[1].data(), -1, last[1].length())) + "\"32,";
 	res->invpoland = "GETUTXO ";
     if (addi(last[0][0])) res->invpoland += "i";
@@ -295,12 +296,17 @@ void foutput(TreeNode *p, int * reg, expression *res) {
 }
 
 void flibload(TreeNode *p, int * reg, expression *res) {
+	if (p->children[1]->size != 1)
+           report_err("Incorrect number of parameters in function call: ", p->children[0]->data, p->line_num);
+
     library lib = findlib(p->children[1]->children[0]->data);
 
-    if (lib.address == NULL)
-        report_err("Incorrect library : ", p->children[1]->children[0]->data, p->line_num);
-
-	res->invpoland = string("LIBLOAD 0,x") + lib.address + ",";
+    if (lib.address == NULL) {
+        res->invpoland = string("LIBLOAD 0,i");
+        translate_exps(p->children[1]->children[0], reg, res);
+        res->invpoland += "\n";
+    }
+    else res->invpoland = string("LIBLOAD 0,x") + lib.address + ",\n";
 }
 
 void fhash(TreeNode *p, int * reg, expression *res) {

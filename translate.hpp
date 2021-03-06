@@ -712,9 +712,68 @@ void imports(TreeNode* root) {
         // funcode += string("LIBLOAD 0,rx") + lib.address + ",\n";
     }
 }
+void printdebugvar(TreeNode * p, string loc, int sz);
+
+string printdebugtypestr(TreeNode * p) {
+    string s;
+    if (!strcmp(p->data, "long") || !strcmp(p->data, "ulong") ||
+           !strcmp(p->data, "char") || !strcmp(p->data, "uchar") ||
+           !strcmp(p->data, "short") || !strcmp(p->data, "ushort") ||
+           !strcmp(p->data, "int") || !strcmp(p->data, "uint"))
+        return p->data;
+    if (!strcmp(p->data, "arrs []")) {
+        for (int i = 0; i < p->size; i++)
+            s = s + "[" + p->children[i]->data + "]";
+        return s;
+    }
+    if (!strcmp(p->data, "[]")) {
+        s = printdebugtypestr(p->children[1]);
+        s += printdebugtypestr(p->children[0]);
+        return s;
+    }
+    if (!strcmp(p->data, "pointer of"))
+        return "*" + printdebugtypestr(p->children[0]);
+    if (!strcmp(p->data, "stspec identifier {}") || !strcmp(p->data, "union identifier {}"))
+        return p->children[1]->data;
+    if (!strcmp(p->data, "stspec {}") || !strcmp(p->data, "union {}")) {
+        // only gets here from type print which does cout, not var print
+        cout << p->children[0]->data << "{}";
+/*
+        cout << "{";
+
+        auto r = p->children[1];
+        const char * glue = "";
+        int loc = 0;
+        bool isstruct = strcmp(p->children[0]->data, "struct") == 0;
+        for (int i = 0; i < r->size; i++) {
+            cout << glue;
+            int sz = getsize(r->children[i]->children[0], true);
+            printdebugvar(r->children[i], to_string(loc), sz);
+            if (isstruct) loc += sz;
+            glue = ",";
+        }
+        cout << "}";
+*/
+
+        return s;
+    }
+    // unknown type. should never gets here
+    return "";
+}
 
 void printdebugvar(TreeNode * p, string loc, int sz) {
-    cout << '"' << p->data << "\":{\"loc\":\"" << loc << "\",\"size\":" << sz << "}";
+    cout << '"' << p->data << "\":{\"loc\":\"" << loc <<
+        "\",\"size\":" << sz << ",\"type\":\"";
+    cout << printdebugtypestr(getType(p));
+    cout << "\"}";
+}
+
+string printdebugvart(TreeNode * p, string loc, int sz) {
+    string s;
+    s = s + '"' + p->data + "\":{\"loc\":\"" + loc +
+         "\",\"size\":" + to_string(sz) +
+         ",\"type\":\"" + printdebugtypestr(getType(p)) + "\"}";
+    return s;
 }
 
 void printdebugvars(TreeNode * p) {
@@ -722,8 +781,7 @@ void printdebugvars(TreeNode * p) {
     for (int i = 0; i < p->size; i++) {
         TreeNode * q = p->children[i];
         if (q->type == _ID) {
-            cout << glue << "{";
-            printdebugvar(q, q->address, getsize(q->children[0], true));
+            cout << glue << "{" << printdebugvart(q, q->address, getsize(q->children[0], true));
             cout << "}";
             glue = ",";
         }
@@ -788,7 +846,7 @@ void phase3_translate() {
         }
 
         mainnode->staticspace = 0;
-        if (debugmode) {
+//        if (debugmode) {
             // generate debug info
             cout << ";#{\"code\":\"\",\"types\":{";
             printdebugtypes(progroot);
@@ -796,13 +854,14 @@ void phase3_translate() {
             cout << "\"vars\":[";
             printdebugvars(progroot);
             cout << "]}\n";
-        }
+//        }
 
         translate_extdeffunc(mainnode, progroot->staticspace + 40, true);
     }
 
     cout << "define mainRETURN .\nEVAL32 gi0,4,\nEVAL32 gi4,BODY,\nSTOP\n";
-    if (debugmode) cout << ";#{\"endcode\":\"\"}\n";
+//    if (debugmode)
+        cout << ";#{\"endcode\":\"\"}\n";
     cout << "define BODY .\n";
     cout << "MALLOC 0," << progroot->staticspace << ",\n";
 
@@ -859,7 +918,8 @@ void phase3_translate() {
         translate_extdeffunc(fallthroughnode, progroot->staticspace + 40, false);
         cout << "\ndefine _RETURN .\n";
         cout << "RETURN\nSTOP\n";
-        if (debugmode) cout << ";#{\"endcode\":\"\"}\n";
+//        if (debugmode)
+            cout << ";#{\"endcode\":\"\"}\n";
     }
     else cout << "REVERT\n";
 
@@ -873,10 +933,12 @@ void phase3_translate() {
 
             cout << "define " << p->children[0]->data << "RETURN .\n";
             cout << "RETURN\n";
-            if (debugmode) cout << ";#{\"endcode\":\"\"}\n";
+//            if (debugmode)
+                cout << ";#{\"endcode\":\"\"}\n";
         }
     }
-    if (debugmode) cout << ";#{\"endcode\":\"\"}\n";
+//    if (debugmode)
+        cout << ";#{\"endcode\":\"\"}\n";
 }
 
 void setparamaddr(TreeNode * p) {
@@ -925,7 +987,8 @@ void translate_extdeffunc(TreeNode *p, int space, bool global) {
 
     int staticspace = 0;
 
-    if (debugmode && p->line_num >= skiplines) {
+//    if (debugmode && p->line_num >= skiplines) {
+    if (p->line_num >= skiplines) {
         cout << ";#{\"code\":\"" << p->children[0]->data << "\"," << "\"types\":{";
         printdebugtypes(q->children[0]);
         cout << "},";
@@ -1029,8 +1092,10 @@ int translate_stmt(TreeNode * pfunc, TreeNode *p) {
 
     funcode += string("; ") + p->line + "\n";
 
-    if (debugmode && p->line_num >= skiplines && simplestmt(p)) {
-        funcode += string(";#{\"srcline\":") + to_string(p->line_num - skiplines + 1) + "}\nNOP\n";
+//    if (debugmode && p->line_num >= skiplines && simplestmt(p)) {
+    if (p->line_num >= skiplines && simplestmt(p)) {
+        funcode += string(";#{\"srcline\":") + to_string(p->line_num - skiplines + 1) + "}\n";
+        if (debugmode) funcode += "NOP\n";
     }
 
     expression exp = {0, false, false, ""};
@@ -1067,8 +1132,10 @@ int translate_stmt(TreeNode * pfunc, TreeNode *p) {
         int tlabel = label++;
         int elabel = label++;
 
-        if (debugmode && p->children[0]->line_num >= skiplines) {
-            funcode += string(";#{\"srcline\":") + to_string(p->children[0]->line_num - skiplines + 1) + "}\nNOP\n";
+//        if (debugmode && p->children[0]->line_num >= skiplines) {
+        if (p->children[0]->line_num >= skiplines) {
+            funcode += string(";#{\"srcline\":") + to_string(p->children[0]->line_num - skiplines + 1) + "}\n";
+            if (debugmode) funcode += "NOP\n";
         }
 
         exptype(p->children[0], &exp);
@@ -1093,9 +1160,11 @@ int translate_stmt(TreeNode * pfunc, TreeNode *p) {
     } else if (!strcmp("for stmt",p->data)) {
         int tlabel = label++;
         int elabel = label++;
-        
-        if (debugmode && p->children[0]->line_num >= skiplines) {
-            funcode += string(";#{\"srcline\":") + to_string(p->children[0]->line_num - skiplines + 1) + "}\nNOP\n";
+
+//        if (debugmode && p->children[0]->line_num >= skiplines) {
+        if (p->children[0]->line_num >= skiplines) {
+            funcode += string(";#{\"srcline\":") + to_string(p->children[0]->line_num - skiplines + 1) + "}\n";
+            if (debugmode) funcode += "NOP\n";
         }
 
         funcode += string("define __label") + to_string(tlabel) + " .\n";
