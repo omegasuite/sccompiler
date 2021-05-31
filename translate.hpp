@@ -1201,7 +1201,8 @@ int translate_stmt(TreeNode * pfunc, TreeNode *p) {
 
             string assignee = string(q->address);
 
-            translate_init(getType(p->children[0]), p->children[1], assignee, 0, &reg, &exp);
+            translate_init(getType(p->children[0]), p->children[1],
+                    assignee, 0, &reg, &exp);
             funcode += exp.invpoland;
         } else if (isstruct(getType(p->children[0]))) {
             string cpdest = "";
@@ -1325,9 +1326,12 @@ void translate_init(TreeNode *r, TreeNode *q, string assignee, int offset, int *
         if (p->children[lst]->type != _SDEFS)
             p = getType(p);
         lst = p->size - 1;
+
         for (int i = 0; i < p->children[lst]->size; i++) {
-            translate_init(p->children[lst]->children[i], q->children[i], assignee, offset, reg, res);
-            offset += getsize(p->children[lst]->children[i], true);
+            if (i < q->size)
+                translate_init(p->children[lst]->children[i], q->children[i], assignee, offset, reg, res);
+            if (strcmp(p->children[0]->data, "union"))
+                offset += getsize(p->children[lst]->children[i], true);
         }
     } else if (!strcmp(p->data, "pointer of")) {
         res->type = 0; res->takeaddr = false;

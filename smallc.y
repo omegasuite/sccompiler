@@ -28,7 +28,7 @@ extern int yylineno;
 %token <string> ASM LIBMARK
 %type <node> EXTDEFS EXTDEF STSPEC FUNC PARAS STMTBLOCK STMTS XTYPE
 %type <node> STMT DEFS SDEFS SDEF EXP EXPS ARRS ARGS EXTVARS NMSTSPEC INIT INITLIST
-%type <node> primary_expression postfix_expression unary_expression unary_operator const
+%type <node> primary_expression postfix_expression unary_expression unary_operator const xunary_expression
 %type <node> cast_expression power_expression multiplicative_expression additive_expression shift_expression
 %type <node> relational_expression equality_expression and_expression exclusive_or_expression inclusive_or_expression
 %type <node> logical_and_expression logical_or_expression assignment_operator left_exp func_expression
@@ -151,10 +151,15 @@ INIT
 	| EXPS { $$ = $1; }
 	;
 
+xunary_expression
+    : unary_expression { $$ = $1; }
+    | '{' '}' { $$ = create_node(yylineno,_INIT, "init list", 0); }
+    ;
+
 INITLIST
-	: unary_expression { $$ = create_node(yylineno,_INIT, "init list", 1, $1); }
+	: xunary_expression { $$ = create_node(yylineno,_INIT, "init list", 1, $1); }
 	| '{' INITLIST '}' { $$ = create_node(yylineno,_INIT, "init list", 1, $2); }
-	| INITLIST ',' unary_expression {$$ = merge_node($1, $3);}
+	| INITLIST ',' xunary_expression {$$ = merge_node($1, $3);}
 	| INITLIST ',' '{' INITLIST '}' {$$ = merge_node($1, $4);}
 	;
 

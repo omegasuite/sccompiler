@@ -228,7 +228,7 @@ void faddDefinition(TreeNode *p, int * reg, expression *res) {
 
 	string last[1];
 	getparam(p, reg, last);
-	res->invpoland = string("ADDRIGHTDEF 0,");
+	res->invpoland = string("ADDDEF 0,");
     if (addi(last[0][0])) res->invpoland += "i";
     res->invpoland += last[0];
 }
